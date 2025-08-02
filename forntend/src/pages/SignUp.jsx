@@ -17,6 +17,7 @@ const SignUp = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [loadingMessage, setLoadingMessage] = useState('')
   const [googleLoading, setGoogleLoading] = useState(false)
   const [passwordValidation, setPasswordValidation] = useState(null)
   
@@ -142,20 +143,8 @@ const SignUp = () => {
     setGoogleLoading(true)
     
     try {
-      const { supabase } = await import('../lib/supabase')
-      
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`
-        }
-      })
-      
-      if (error) {
-        toast.error('Failed to sign up with Google')
-        console.error('Google sign up error:', error)
-      }
-      // Note: If successful, user will be redirected by OAuth flow
+      // Google OAuth not implemented in custom backend yet
+      toast.error('Google sign up coming soon! Please use email signup for now.')
     } catch (error) {
       toast.error('Google sign up failed')
       console.error('Google sign up error:', error)
@@ -438,7 +427,7 @@ const SignUp = () => {
                             style={{ width: `${(passwordValidation.strength / 6) * 100}%` }}
                           ></div>
                         </div>
-                        {passwordValidation.errors.length > 0 && (
+                        {passwordValidation && passwordValidation.errors.length > 0 && (
                           <div className="space-y-1">
                             {passwordValidation.errors.map((error, index) => (
                               <div key={index} className="flex items-center space-x-2 text-xs text-red-400">
@@ -448,7 +437,7 @@ const SignUp = () => {
                             ))}
                           </div>
                         )}
-                        {passwordValidation.warnings.length > 0 && (
+                        {passwordValidation && passwordValidation.warnings.length > 0 && (
                           <div className="space-y-1">
                             {passwordValidation.warnings.map((warning, index) => (
                               <div key={index} className="flex items-center space-x-2 text-xs text-yellow-400">

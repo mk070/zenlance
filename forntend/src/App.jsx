@@ -7,7 +7,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import SignIn from './pages/SignIn'
 import SignUp from './pages/SignUp'
 import VerifyOTP from './pages/VerifyOTP'
-import AuthCallback from './pages/AuthCallback'
+
 import BusinessSetup from './pages/BusinessSetup'
 import Dashboard from './pages/Dashboard'
 
@@ -21,7 +21,7 @@ function App() {
             <Route path="/signin" element={<SignIn />} />
             <Route path="/signup" element={<SignUp />} />
             <Route path="/verify-otp" element={<VerifyOTP />} />
-            <Route path="/auth/callback" element={<AuthCallback />} />
+
             
             {/* Semi-Protected Routes (authenticated but may need completion) */}
             <Route path="/business-setup" element={

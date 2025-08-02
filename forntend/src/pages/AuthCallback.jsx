@@ -12,35 +12,10 @@ const AuthCallback = () => {
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
-        const { supabase } = await import('../lib/supabase')
-        
-        // Get the session from the URL hash
-        const { data: { session }, error } = await supabase.auth.getSession()
-        
-        if (error) {
-          console.error('Auth callback error:', error)
-          toast.error('Authentication failed')
-          navigate('/signin')
-          return
-        }
-
-        if (session?.user) {
-          // Check if this is a new user (first time signing in with Google)
-          const isNewUser = new Date(session.user.created_at) > new Date(Date.now() - 60000) // Within last minute
-
-          if (isNewUser) {
-            // New user - redirect to business setup
-            toast.success('Welcome to FreelanceHub! 🎉')
-            navigate('/business-setup')
-          } else {
-            // Existing user - redirect to dashboard
-            toast.success('Welcome back!')
-            navigate('/dashboard')
-          }
-        } else {
-          // No session - redirect to signin
-          navigate('/signin')
-        }
+        // For future OAuth implementation
+        // Currently redirecting to signin as OAuth is not implemented
+        toast.error('OAuth authentication not yet implemented')
+        navigate('/signin')
       } catch (error) {
         console.error('Auth callback error:', error)
         toast.error('Authentication failed')

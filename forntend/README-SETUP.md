@@ -1,94 +1,105 @@
-# 🚀 FreelanceHub - Fresh Setup Guide
+# Frontend Setup Guide
 
-## 🎯 **Quick Setup (3 Steps)**
+## Quick Setup Steps
 
-Your FreelanceHub has a beautiful Apple-inspired design with Google authentication. Let's get the database working!
+### 1. Database Setup (Backend)
+1. **Make sure your MongoDB backend is running** (see backend README)
+2. **The backend handles all authentication and user management**
 
-### **Step 1: Run Database Setup**
-1. **Go to**: https://supabase.com/dashboard/project/rhlvrgfpxvtkpwjyfvzt/sql/new
-2. **Copy all content** from `supabase-fresh-setup.sql`
-3. **Paste into SQL Editor** and **click RUN**
-4. **Wait for completion** (should see "Setup Complete!" message)
+### 2. Frontend Environment
+Create `.env` file in the `forntend` directory:
+```
+VITE_API_BASE_URL=http://localhost:5000/api
+```
 
-### **Step 2: Test It Works**
+### 3. Install Dependencies
 ```bash
-node test-fresh-setup.js
+cd forntend
+npm install
 ```
 
-You should see:
-```
-✅ SIGNUP SUCCESSFUL!
-✅ Profile auto-created!
-🎉 SUCCESS! Your FreelanceHub is ready!
-```
-
-### **Step 3: Test Your App**
+### 4. Start Development Server
 ```bash
 npm run dev
 ```
 
-Go to: **http://localhost:5173/signup**
+Your app will be available at `http://localhost:5173`
 
-## ✨ **What You Get**
+## Testing Authentication
 
-### **🎨 Beautiful UI**
-- ✅ Apple-inspired dark theme
-- ✅ Glassmorphism effects
-- ✅ Smooth animations
-- ✅ Professional typography
-- ✅ Responsive design
+### Test User Registration
+1. Go to `http://localhost:5173/signup`
+2. Fill in email and password
+3. Check your email for OTP
+4. Verify OTP at `/verify-otp`
+5. Complete business setup
+6. Access dashboard
 
-### **🔐 Authentication**
-- ✅ Email/password signup
-- ✅ Google OAuth integration
-- ✅ Email verification (OTP)
-- ✅ Password strength validation
-- ✅ Automatic profile creation
+### Test User Login
+1. Go to `http://localhost:5173/signin`
+2. Use registered email/password
+3. Access dashboard directly
 
-### **📊 Database**
-- ✅ User profiles table
-- ✅ Row Level Security (RLS)
-- ✅ Automatic triggers
-- ✅ File storage ready
+## Common Issues & Solutions
 
-### **🚀 User Flow**
-1. **Sign Up** → Beautiful form with validation
-2. **Email Verification** → OTP code sent
-3. **Business Setup** → Personalized onboarding
-4. **Dashboard** → Ready to use!
-
-## 🔧 **Environment Setup**
-
-Make sure you have `.env.local`:
-```env
-VITE_SUPABASE_URL=https://rhlvrgfpxvtkpwjyfvzt.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key-here
+### Frontend won't start
+**Cause**: Missing dependencies or wrong Node.js version
+**Solution**: 
+```bash
+rm -rf node_modules package-lock.json
+npm install
 ```
 
-## 🆘 **Troubleshooting**
+### API calls failing
+**Cause**: Backend not running or wrong API URL
+**Solution**: 
+1. Make sure backend is running on port 5000
+2. Check `VITE_API_BASE_URL` in `.env`
 
-### **Issue: "Database error saving new user"**
-**Solution**: Run the `supabase-fresh-setup.sql` script in Supabase dashboard
+### Authentication not working  
+**Cause**: Backend authentication service issues
+**Solution**: Check backend logs and ensure MongoDB is connected
 
-### **Issue: "User not receiving OTP emails"**
-**Solution**: Check Supabase Authentication settings:
-1. Go to Authentication → Settings
-2. Set Site URL: `http://localhost:5173`
-3. Enable email confirmations
+## Environment Variables
 
-### **Issue: Google login not working**
-**Solution**: Configure Google OAuth:
-1. Go to Authentication → Providers
-2. Enable Google provider
-3. Add your Google OAuth credentials
+```env
+# Required
+VITE_API_BASE_URL=http://localhost:5000/api
 
-## 🎉 **You're Ready!**
+# Optional (for different environments)
+VITE_APP_NAME=Vibe Code
+VITE_APP_VERSION=1.0.0
+```
 
-Your FreelanceHub is now a production-ready SaaS platform with:
-- ✅ **Beautiful Apple-inspired UI**
-- ✅ **Google + Email authentication**
-- ✅ **Secure database with RLS**
-- ✅ **Personalized onboarding**
-- ✅ **Professional design system**
+## Development Tips
 
-**Start building your freelance business management empire!** 🚀 
+1. **Hot Reload**: Changes are automatically reflected
+2. **Console Errors**: Check browser dev tools for detailed errors
+3. **Network Tab**: Monitor API calls and responses
+4. **Component Tree**: Use React DevTools for debugging
+
+## Production Build
+
+```bash
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
+
+# Deploy the `dist` folder to your hosting service
+```
+
+## File Structure
+```
+forntend/
+├── src/
+│   ├── components/     # Reusable components
+│   ├── contexts/       # React contexts
+│   ├── hooks/         # Custom hooks
+│   ├── lib/           # Utilities and API client
+│   ├── pages/         # Page components
+│   └── main.jsx       # App entry point
+├── public/            # Static assets
+└── package.json       # Dependencies
+``` 

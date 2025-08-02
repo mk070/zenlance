@@ -60,20 +60,8 @@ const SignIn = () => {
     setGoogleLoading(true)
     
     try {
-      const { supabase } = await import('../lib/supabase')
-      
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`
-        }
-      })
-      
-      if (error) {
-        toast.error('Failed to sign in with Google')
-        console.error('Google sign in error:', error)
-      }
-      // Note: If successful, user will be redirected by OAuth flow
+      // Google OAuth not implemented in custom backend yet
+      toast.error('Google sign in coming soon! Please use email signin for now.')
     } catch (error) {
       toast.error('Google sign in failed')
       console.error('Google sign in error:', error)

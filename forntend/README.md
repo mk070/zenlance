@@ -1,226 +1,162 @@
-# 🚀 AI SaaS Platform - Complete Authentication System
+# Vibe Code Frontend
 
-A modern, production-ready React application with **enterprise-grade authentication** powered by Supabase. Features beautiful UI, comprehensive user management, and advanced security.
+A modern, production-ready React application with **enterprise-grade authentication** powered by custom Node.js/MongoDB backend. Features beautiful UI, comprehensive user management, and advanced security.
 
 ## ✨ Features
 
 ### 🔐 Authentication & Security
-- **Email & Password Authentication** with validation
-- **Social Authentication** (Google, GitHub)
-- **Advanced Email Verification** with custom tokens
-- **Password Reset Flow** with secure links
-- **Protected Routes** with authentication guards
-- **Row Level Security (RLS)** for data protection
-- **Activity Logging** for security monitoring
-- **Session Management** with auto-refresh
+- **Email/Password Authentication** with OTP verification
+- **Password Reset** functionality
+- **Account Security** with login attempt tracking
+- **JWT Token Management** with refresh tokens
+- **Protected Routes** and role-based access
+- **Input Validation** and sanitization
 
-### 👤 User Management
-- **Complete User Profiles** with rich metadata
-- **Profile Completion Tracking** with progress indicators
-- **Avatar Management** with fallback generation
-- **User Preferences** and settings
-- **Activity History** and analytics
-- **Onboarding Flow** for new users
-
-### 🎨 User Experience
-- **Modern, Responsive UI** built with Tailwind CSS
-- **Smooth Animations** using Framer Motion
-- **Loading States** and error handling throughout
+### 🎨 UI/UX Excellence
+- **Apple-Inspired Design** with dark theme
+- **Glassmorphism Effects** and smooth animations
+- **Responsive Design** for all devices
+- **Framer Motion** animations
+- **Tailwind CSS** for styling
 - **Toast Notifications** for user feedback
-- **Progressive Enhancement** for better UX
-- **Mobile-First Design** that works everywhere
 
-### 🛠️ Developer Experience
-- **Type-Safe** with comprehensive validation
-- **Modular Architecture** with reusable components
-- **Production-Ready** code with error boundaries
-- **Comprehensive Documentation**
-- **Easy Setup** with guided configuration
+### 📱 Pages & Components
+- **Authentication Pages**: Sign In, Sign Up, OTP Verification
+- **Business Setup**: Onboarding wizard
+- **Dashboard**: Main application interface
+- **Protected Routes**: Secure navigation
+- **Reusable Components**: Button, Input, Card, Background
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 16+ installed
-- A free Supabase account
+- Node.js 18+ and npm
+- Running MongoDB backend (see backend README)
 
-### 1. Clone and Install
+### Installation
+
 ```bash
-git clone <your-repo-url>
-cd vibe-code
+# Install dependencies
 npm install
-```
 
-### 2. Supabase Setup
-1. Create a new project at [supabase.com](https://supabase.com)
-2. Copy the SQL schema from `supabase-schema.sql` to your SQL Editor
-3. Execute the schema to create tables, functions, and policies
-
-### 3. Environment Configuration
-Create a `.env` file:
-```env
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-```
-
-### 4. Start Development
-```bash
+# Start development server
 npm run dev
 ```
 
-Visit `http://localhost:5173` and start testing!
+### Environment Variables
+Create `.env` file:
+```
+VITE_API_BASE_URL=http://localhost:5000/api
+```
 
-**📖 For detailed setup instructions, see [SUPABASE_SETUP.md](./SUPABASE_SETUP.md)**
+## 🏗️ Project Structure
 
-## 🏗️ Architecture
-
-### Tech Stack
-- **Frontend**: React 18 + Vite
-- **Styling**: Tailwind CSS + Radix UI
-- **Animation**: Framer Motion
-- **Authentication**: Supabase Auth
-- **Database**: PostgreSQL (Supabase)
-- **Icons**: Lucide React
-- **Notifications**: React Hot Toast
-
-### Project Structure
 ```
 src/
-├── contexts/
-│   └── AuthContext.jsx          # Global authentication state
-├── lib/
-│   ├── supabase.js             # Supabase client setup
-│   └── userProfileService.js   # User profile operations
-├── pages/
-│   ├── SignIn.jsx              # Authentication pages
-│   ├── SignUp.jsx
-│   ├── Dashboard.jsx           # Main application pages
-│   ├── Profile.jsx
-│   ├── ForgotPassword.jsx
-│   └── EmailVerification.jsx
 ├── components/
-│   ├── ui/                     # Reusable UI components
-│   └── ProtectedRoute.jsx      # Route protection
-└── App.jsx                     # Main application
+│   ├── ProtectedRoute.jsx      # Route protection
+│   └── ui/                     # Reusable UI components
+├── contexts/
+│   └── AuthContext.jsx         # Authentication state
+├── hooks/
+│   └── useAuth.js             # Authentication hook
+├── lib/
+│   ├── api-client.js          # Backend API client
+│   └── utils.js               # Utility functions
+├── pages/
+│   ├── SignIn.jsx             # Sign in page
+│   ├── SignUp.jsx             # Sign up page
+│   ├── VerifyOTP.jsx          # OTP verification
+│   ├── BusinessSetup.jsx      # Onboarding
+│   └── Dashboard.jsx          # Main dashboard
+└── main.jsx                   # App entry point
 ```
 
-## 🔧 Configuration
+## 🔧 Available Scripts
 
-### Authentication Providers
-Enable additional authentication providers in your Supabase dashboard:
-- Google OAuth
-- GitHub OAuth
-- More providers available
+```bash
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run preview      # Preview production build
+npm run lint         # Run ESLint
+```
 
-### Email Templates
-Customize email templates in Supabase for:
-- Welcome messages
-- Email verification
-- Password reset
-- Account changes
+## 🎯 Authentication Flow
 
-### Security Settings
-Configure security settings:
-- Site URLs and redirect URLs
-- Session timeout duration
-- Password requirements
-- Email verification enforcement
+1. **Sign Up**: Email/password → OTP verification → Business setup
+2. **Sign In**: Email/password → Dashboard (if verified)
+3. **OTP Verification**: 6-digit code sent to email
+4. **Password Reset**: Email link with secure token
+5. **Protected Routes**: JWT token validation
 
-## 📊 Database Schema
+## 🎨 Design System
 
-The system includes comprehensive database schema with:
+### Colors
+- **Primary**: Black (#000000)
+- **Secondary**: White (#FFFFFF)  
+- **Accent**: Navy Blue (#1e40af)
+- **Background**: Black with subtle gradients
 
-### Core Tables
-- **user_profiles**: Extended user information
-- **user_activity_log**: Activity tracking and analytics
-- **email_verification_tokens**: Custom verification system
+### Typography
+- **Font**: Inter (clean, modern)
+- **Weights**: 300 (light), 400 (normal), 500 (medium), 600 (semibold)
 
-### Features
-- **Automatic profile creation** via database triggers
-- **Activity logging** for all user actions
-- **Secure RLS policies** for data protection
-- **Performance indexes** for fast queries
-- **Utility functions** for common operations
+### Components
+- **Glassmorphism**: `backdrop-blur-xl` with subtle borders
+- **Buttons**: White background, black text, hover effects
+- **Cards**: Dark background with glass effects
+- **Animations**: Smooth transitions with Framer Motion
 
-## 🛡️ Security Features
+## 🔐 Security Features
 
-### Row Level Security (RLS)
-- Users can only access their own data
-- Secure database policies enforce permissions
-- Service role for administrative operations
+- **JWT Token Management**: Automatic refresh and storage
+- **Protected Routes**: Authentication-based navigation
+- **Input Validation**: Client-side and server-side validation
+- **Error Handling**: Comprehensive error management
+- **Rate Limiting**: API request throttling
+- **Secure Storage**: Safe token handling
 
-### Input Validation
-- Comprehensive form validation
-- Data sanitization before storage
-- SQL injection prevention
+## 📦 Key Dependencies
 
-### Activity Monitoring
-- All user actions logged
-- Security event tracking
-- Analytics for user behavior
+- **React 18**: Modern React with hooks
+- **React Router**: Client-side routing
+- **Framer Motion**: Smooth animations
+- **Tailwind CSS**: Utility-first styling
+- **React Hot Toast**: Beautiful notifications
+- **Lucide React**: Modern icons
 
-## 🎨 UI Components
+## 🚀 Production Deployment
 
-### Authentication Pages
-- **Modern design** with animated backgrounds
-- **Form validation** with real-time feedback
-- **Loading states** for better UX
-- **Error handling** with clear messages
+```bash
+# Build for production
+npm run build
 
-### Dashboard
-- **Responsive layout** that works on all devices
-- **Real-time data** updates
-- **Interactive elements** with smooth animations
-- **Profile management** integrated
+# Preview build locally
+npm run preview
+```
 
-### Profile Management
-- **Tabbed interface** for different settings
-- **Progress tracking** for profile completion
-- **Avatar management** with fallbacks
-- **Preference controls** for customization
+## 📖 API Integration
 
-## 🚀 Deployment
+The frontend communicates with a custom Node.js/Express/MongoDB backend:
 
-### Production Checklist
-- [ ] Update environment variables
-- [ ] Configure production site URLs
-- [ ] Set up custom SMTP for emails
-- [ ] Review and test RLS policies
-- [ ] Enable database backups
-- [ ] Set up monitoring and logging
-
-### Deployment Platforms
-This app can be deployed to:
-- **Vercel** (recommended for React apps)
-- **Netlify**
-- **AWS Amplify**
-- **Any static hosting provider**
+- **Authentication**: `/api/auth/*`
+- **User Management**: `/api/user/*`
+- **Profile Management**: `/api/profile/*`
 
 ## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+4. Submit a pull request
 
-## 📝 License
+## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-- 📖 Read the [Setup Guide](./SUPABASE_SETUP.md)
-- 🐛 Report issues on GitHub
-- 💬 Join the Supabase Discord community
-- 📧 Contact support for enterprise needs
+This project is licensed under the MIT License.
 
 ## 🙏 Acknowledgments
 
-- [Supabase](https://supabase.com) for the amazing backend platform
-- [Tailwind CSS](https://tailwindcss.com) for the utility-first styling
-- [Radix UI](https://radix-ui.com) for accessible components
-- [Framer Motion](https://framer.com/motion) for smooth animations
-
----
-
-**🎉 Ready to build something amazing? Get started with this production-ready authentication system today!** 
+- **React Team** for the amazing framework
+- **Tailwind CSS** for the utility-first approach
+- **Framer Motion** for smooth animations
+- **Vite** for blazing fast development 
