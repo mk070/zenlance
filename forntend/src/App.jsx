@@ -10,6 +10,11 @@ import VerifyOTP from './pages/VerifyOTP'
 
 import BusinessSetup from './pages/BusinessSetup'
 import Dashboard from './pages/Dashboard'
+import Leads from './pages/Leads'
+import Clients from './pages/Clients'
+import Profile from './pages/Profile'
+import Settings from './pages/Settings'
+import Layout from './components/Layout'
 
 function App() {
   return (
@@ -33,7 +38,41 @@ function App() {
             {/* Protected Routes */}
             <Route path="/dashboard" element={
               <ProtectedRoute>
-                <Dashboard />
+                <Layout>
+                  <Dashboard />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/leads" element={
+              <ProtectedRoute>
+                <Layout>
+                  <Leads />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/clients" element={
+              <ProtectedRoute>
+                <Layout>
+                  <Clients />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/profile" element={
+              <ProtectedRoute>
+                <Layout>
+                  <Profile />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/settings" element={
+              <ProtectedRoute>
+                <Layout>
+                  <Settings />
+                </Layout>
               </ProtectedRoute>
             } />
             

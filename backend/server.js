@@ -22,7 +22,7 @@ console.log('- PORT:', process.env.PORT);
 console.log('- MONGODB_URI:', process.env.MONGODB_URI ? 'Set' : 'Not set');
 console.log('- JWT_SECRET:', process.env.JWT_SECRET ? 'Set' : 'Not set');
 
-let authRoutes, userRoutes, profileRoutes, errorHandler, notFound, logger;
+let authRoutes, userRoutes, profileRoutes, leadsRoutes, clientsRoutes, errorHandler, notFound, logger;
 
 try {
   console.log('🔍 Loading route modules...');
@@ -39,6 +39,14 @@ try {
   const profileModule = await import('./routes/profile.js');
   profileRoutes = profileModule.default;
   console.log('✅ Profile routes loaded');
+  
+  const leadsModule = await import('./routes/leads.js');
+  leadsRoutes = leadsModule.default;
+  console.log('✅ Leads routes loaded');
+  
+  const clientsModule = await import('./routes/clients.js');
+  clientsRoutes = clientsModule.default;
+  console.log('✅ Clients routes loaded');
   
   // Import middleware
   console.log('🔍 Loading middleware...');
@@ -217,6 +225,12 @@ try {
   
   app.use('/api/profile', profileRoutes);
   console.log('✅ Profile routes mounted');
+  
+  app.use('/api/leads', leadsRoutes);
+  console.log('✅ Leads routes mounted');
+  
+  app.use('/api/clients', clientsRoutes);
+  console.log('✅ Clients routes mounted');
 } catch (error) {
   console.error('❌ Error mounting routes:', error);
   console.error('Error details:', error.message);
