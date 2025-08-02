@@ -41,7 +41,8 @@ router.patch('/me', authenticate, [
   body('currentTools.*').optional().trim().isLength({ max: 50 }),
   body('tags').optional().isArray(),
   body('tags.*').optional().trim().isLength({ max: 30 }),
-  body('notes').optional().trim().isLength({ max: 1000 })
+  body('notes').optional().trim().isLength({ max: 1000 }),
+  body('onboardingCompleted').optional().isBoolean()
 ], catchAsync(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {

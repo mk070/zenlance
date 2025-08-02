@@ -15,7 +15,7 @@ const AuthCallback = () => {
         // For future OAuth implementation
         // Currently redirecting to signin as OAuth is not implemented
         toast.error('OAuth authentication not yet implemented')
-        navigate('/signin')
+          navigate('/signin')
       } catch (error) {
         console.error('Auth callback error:', error)
         toast.error('Authentication failed')

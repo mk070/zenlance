@@ -1,139 +1,87 @@
-// API client for MongoDB backend
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+import { getAccessToken, setAccessToken, removeAccessToken } from './auth-utils'
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 class ApiClient {
   constructor() {
-    this.baseURL = API_BASE_URL;
-    this.token = localStorage.getItem('accessToken');
-    this.refreshToken = localStorage.getItem('refreshToken');
+    this.baseURL = API_BASE_URL
   }
 
-  // Set authentication tokens
-  setTokens(accessToken, refreshToken) {
-    this.token = accessToken;
-    this.refreshToken = refreshToken;
-    
-    if (accessToken) {
-      localStorage.setItem('accessToken', accessToken);
-    } else {
-      localStorage.removeItem('accessToken');
-    }
-    
-    if (refreshToken) {
-      localStorage.setItem('refreshToken', refreshToken);
-    } else {
-      localStorage.removeItem('refreshToken');
-    }
-  }
-
-  // Clear authentication tokens
-  clearTokens() {
-    this.token = null;
-    this.refreshToken = null;
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-  }
-
-  // Get stored tokens
-  getStoredTokens() {
-    return {
-      accessToken: localStorage.getItem('accessToken'),
-      refreshToken: localStorage.getItem('refreshToken')
-    };
-  }
-
-  // Make HTTP request with automatic token refresh
   async request(endpoint, options = {}) {
-    const url = `${this.baseURL}${endpoint}`;
+    const url = `${this.baseURL}${endpoint}`
+    const token = getAccessToken()
     
     const config = {
       headers: {
         'Content-Type': 'application/json',
-        ...options.headers
+        ...options.headers,
       },
-      ...options
-    };
+      ...options,
+    }
 
-    // Add authorization header if token exists
-    if (this.token && !config.headers.Authorization) {
-      config.headers.Authorization = `Bearer ${this.token}`;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
     }
 
     try {
-      let response = await fetch(url, config);
-
-      // If token expired, try to refresh
-      if (response.status === 401 && this.refreshToken && !endpoint.includes('/refresh-token')) {
-        const refreshResult = await this.refreshAccessToken();
-        
-        if (refreshResult.success) {
-          // Retry original request with new token
-          config.headers.Authorization = `Bearer ${this.token}`;
-          response = await fetch(url, config);
-        } else {
-          // Refresh failed, clear tokens and redirect to login
-          this.clearTokens();
-          window.location.href = '/signin';
-          return { success: false, error: 'Authentication expired' };
+      const response = await fetch(url, config)
+      
+      // Handle 401 Unauthorized - token might be expired
+      if (response.status === 401) {
+        try {
+          const newToken = await this.refreshAccessToken()
+          if (newToken) {
+            // Retry the original request with new token
+            config.headers.Authorization = `Bearer ${newToken}`
+            const retryResponse = await fetch(url, config)
+            return await this.handleResponse(retryResponse)
+          }
+        } catch (refreshError) {
+          // Refresh failed, redirect to login
+          removeAccessToken()
+          window.location.href = '/signin'
+          throw new Error('Session expired. Please sign in again.')
         }
       }
 
-      const data = await response.json();
+      return await this.handleResponse(response)
+  } catch (error) {
+      console.error('API request failed:', error)
+    throw error
+  }
+}
 
-      if (!response.ok) {
-        return {
-          success: false,
-          error: data.error || 'Request failed',
-          validationErrors: data.validationErrors,
-          statusCode: response.status
-        };
-      }
-
-      return {
-        success: true,
-        data: data.data || data,
-        message: data.message
-      };
-    } catch (error) {
-      console.error('API request failed:', error);
-      return {
-        success: false,
-        error: 'Network error. Please check your connection.',
-        originalError: error
-      };
+  async handleResponse(response) {
+    const contentType = response.headers.get('content-type')
+    
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json()
+      return data
+    } else {
+      // For non-JSON responses (like file downloads)
+      return response
     }
   }
 
-  // Refresh access token
-  async refreshAccessToken() {
-    if (!this.refreshToken) {
-      return { success: false, error: 'No refresh token available' };
-    }
-
+    async refreshAccessToken() {
     try {
       const response = await fetch(`${this.baseURL}/auth/refresh-token`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          refreshToken: this.refreshToken
-        })
-      });
+        credentials: 'include',
+      })
 
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        this.setTokens(data.tokens.accessToken, data.tokens.refreshToken);
-        return { success: true };
-      } else {
-        this.clearTokens();
-        return { success: false, error: data.error || 'Token refresh failed' };
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.tokens && data.tokens.accessToken) {
+          setAccessToken(data.tokens.accessToken)
+          return data.tokens.accessToken
+        }
       }
+      
+      throw new Error('Token refresh failed')
     } catch (error) {
-      console.error('Token refresh failed:', error);
-      this.clearTokens();
-      return { success: false, error: 'Token refresh failed' };
+      console.error('Token refresh error:', error)
+      throw error
     }
   }
 
@@ -142,324 +90,426 @@ class ApiClient {
     return this.request('/auth/signup', {
       method: 'POST',
       body: JSON.stringify(userData)
-    });
+    })
   }
 
   async signIn(email, password) {
-    const result = await this.request('/auth/signin', {
+    return this.request('/auth/signin', {
       method: 'POST',
       body: JSON.stringify({ email, password })
-    });
-
-    if (result.success && result.data.tokens) {
-      this.setTokens(result.data.tokens.accessToken, result.data.tokens.refreshToken);
-    }
-
-    return result;
+    })
   }
 
   async verifyOTP(email, otp) {
-    const result = await this.request('/auth/verify-otp', {
+    return this.request('/auth/verify-otp', {
       method: 'POST',
       body: JSON.stringify({ email, otp })
-    });
-
-    if (result.success && result.data.tokens) {
-      this.setTokens(result.data.tokens.accessToken, result.data.tokens.refreshToken);
-    }
-
-    return result;
+    })
   }
 
   async resendOTP(email) {
     return this.request('/auth/resend-otp', {
       method: 'POST',
       body: JSON.stringify({ email })
-    });
+    })
   }
 
   async forgotPassword(email) {
     return this.request('/auth/forgot-password', {
       method: 'POST',
       body: JSON.stringify({ email })
-    });
+    })
   }
 
   async resetPassword(token, password) {
     return this.request('/auth/reset-password', {
       method: 'POST',
       body: JSON.stringify({ token, password })
-    });
+    })
   }
 
   async signOut() {
-    const result = await this.request('/auth/logout', {
-      method: 'POST',
-      body: JSON.stringify({ refreshToken: this.refreshToken })
-    });
-
-    this.clearTokens();
-    return result;
+    return this.request('/auth/logout', {
+      method: 'POST'
+    })
   }
 
   async signOutAll() {
-    const result = await this.request('/auth/logout-all', {
+    return this.request('/auth/logout-all', {
       method: 'POST'
-    });
-
-    this.clearTokens();
-    return result;
+    })
   }
 
   // User methods
   async getCurrentUser() {
-    return this.request('/user/me');
+    return this.request('/users/me')
   }
 
   async updateUserPreferences(preferences) {
-    return this.request('/user/preferences', {
+    return this.request('/users/preferences', {
       method: 'PATCH',
       body: JSON.stringify(preferences)
-    });
+    })
   }
 
   async changePassword(currentPassword, newPassword) {
-    return this.request('/user/change-password', {
+    return this.request('/users/change-password', {
       method: 'PATCH',
       body: JSON.stringify({ currentPassword, newPassword })
-    });
+    })
   }
 
   async deactivateAccount(password) {
-    return this.request('/user/deactivate', {
-      method: 'PATCH',
+    return this.request('/users/deactivate', {
+      method: 'POST',
       body: JSON.stringify({ password })
-    });
+    })
   }
 
   // Profile methods
   async getUserProfile() {
-    return this.request('/profile/me');
+    return this.request('/profile/me')
   }
 
   async updateUserProfile(profileData) {
     return this.request('/profile/me', {
       method: 'PATCH',
       body: JSON.stringify(profileData)
-    });
+    })
   }
 
   async updateProfileSettings(settings) {
     return this.request('/profile/settings', {
       method: 'PATCH',
       body: JSON.stringify(settings)
-    });
+    })
   }
 
   async completeOnboardingStep(step) {
-    return this.request(`/profile/onboarding/${step}`, {
-      method: 'PATCH'
-    });
+    return this.request('/profile/onboarding', {
+      method: 'PATCH',
+      body: JSON.stringify({ step })
+    })
   }
 
   async getOnboardingStatus() {
-    return this.request('/profile/onboarding');
+    return this.request('/profile/onboarding')
   }
 
   async getProfileAnalytics() {
-    return this.request('/profile/analytics');
+    return this.request('/profile/analytics')
   }
 
-  // Password management
-  async changePassword(passwordData) {
-    return this.request('/auth/change-password', {
-      method: 'POST',
-      body: JSON.stringify(passwordData)
-    });
-  }
-
-  // Data export
   async exportUserData() {
-    return this.request('/user/export-data');
+    return this.request('/profile/export', {
+      method: 'POST'
+    })
   }
 
-  // Account deletion
   async deleteAccount() {
-    return this.request('/user/delete-account', {
+    return this.request('/users/delete', {
       method: 'DELETE'
-    });
+    })
   }
 
-  // Leads API methods
+  // Leads methods
   async getLeads(params = {}) {
-    const queryString = new URLSearchParams(params).toString();
-    return this.request(`/leads${queryString ? `?${queryString}` : ''}`);
+    const queryString = new URLSearchParams(params).toString()
+    return this.request(`/leads${queryString ? `?${queryString}` : ''}`)
   }
 
   async getLead(id) {
-    return this.request(`/leads/${id}`);
+    return this.request(`/leads/${id}`)
   }
 
   async createLead(leadData) {
     return this.request('/leads', {
       method: 'POST',
       body: JSON.stringify(leadData)
-    });
+    })
   }
 
   async updateLead(id, leadData) {
     return this.request(`/leads/${id}`, {
       method: 'PUT',
       body: JSON.stringify(leadData)
-    });
+    })
   }
 
   async deleteLead(id) {
     return this.request(`/leads/${id}`, {
       method: 'DELETE'
-    });
+    })
   }
 
   async addLeadNote(id, noteData) {
     return this.request(`/leads/${id}/notes`, {
       method: 'POST',
       body: JSON.stringify(noteData)
-    });
+    })
   }
 
   async addLeadCommunication(id, communicationData) {
     return this.request(`/leads/${id}/communications`, {
       method: 'POST',
       body: JSON.stringify(communicationData)
-    });
+    })
   }
 
   async updateLeadStatus(id, status) {
     return this.request(`/leads/${id}/status`, {
       method: 'PUT',
       body: JSON.stringify({ status })
-    });
+    })
   }
 
   async convertLeadToClient(id, clientData = {}) {
     return this.request(`/leads/${id}/convert`, {
       method: 'POST',
-      body: JSON.stringify({ clientData })
-    });
+      body: JSON.stringify(clientData)
+    })
   }
 
   async getLeadStatistics(days = 30) {
-    return this.request(`/leads/statistics?days=${days}`);
+    return this.request(`/leads/statistics?days=${days}`)
   }
 
   async getLeadsForFollowUp() {
-    return this.request('/leads/follow-up');
+    return this.request('/leads/follow-up')
   }
 
-  // Clients API methods
+  // Clients methods
   async getClients(params = {}) {
-    const queryString = new URLSearchParams(params).toString();
-    return this.request(`/clients${queryString ? `?${queryString}` : ''}`);
+    const queryString = new URLSearchParams(params).toString()
+    return this.request(`/clients${queryString ? `?${queryString}` : ''}`)
   }
 
   async getClient(id) {
-    return this.request(`/clients/${id}`);
+    return this.request(`/clients/${id}`)
   }
 
   async createClient(clientData) {
     return this.request('/clients', {
       method: 'POST',
       body: JSON.stringify(clientData)
-    });
+    })
   }
 
   async updateClient(id, clientData) {
     return this.request(`/clients/${id}`, {
       method: 'PUT',
       body: JSON.stringify(clientData)
-    });
+    })
   }
 
   async deleteClient(id) {
     return this.request(`/clients/${id}`, {
       method: 'DELETE'
-    });
+    })
   }
 
   async addClientNote(id, noteData) {
     return this.request(`/clients/${id}/notes`, {
       method: 'POST',
       body: JSON.stringify(noteData)
-    });
+    })
   }
 
   async addClientProject(id, projectData) {
     return this.request(`/clients/${id}/projects`, {
       method: 'POST',
       body: JSON.stringify(projectData)
-    });
+    })
   }
 
   async updateClientProject(id, projectId, projectData) {
     return this.request(`/clients/${id}/projects/${projectId}`, {
       method: 'PUT',
       body: JSON.stringify(projectData)
-    });
+    })
   }
 
   async addClientContract(id, contractData) {
     return this.request(`/clients/${id}/contracts`, {
       method: 'POST',
       body: JSON.stringify(contractData)
-    });
+    })
   }
 
   async updateClientStatus(id, status) {
     return this.request(`/clients/${id}/status`, {
       method: 'PUT',
       body: JSON.stringify({ status })
-    });
+    })
   }
 
   async updateClientPriority(id, priority) {
     return this.request(`/clients/${id}/priority`, {
       method: 'PUT',
       body: JSON.stringify({ priority })
-    });
+    })
   }
 
   async getClientStatistics(days = 30) {
-    return this.request(`/clients/statistics?days=${days}`);
+    return this.request(`/clients/statistics?days=${days}`)
   }
 
   async getHighValueClients(minValue = 10000) {
-    return this.request(`/clients/high-value?minValue=${minValue}`);
+    return this.request(`/clients/high-value?minValue=${minValue}`)
   }
 
   async getRevenueByMonth(months = 12) {
-    return this.request(`/clients/revenue-by-month?months=${months}`);
+    return this.request(`/clients/revenue-by-month?months=${months}`)
   }
 
   async getClientsForReview() {
-    return this.request('/clients/for-review');
+    return this.request('/clients/review')
   }
 
-  // Utility methods
-  isAuthenticated() {
-    return !!this.token;
+  // Invoices methods
+  async getInvoices(params = {}) {
+    const queryString = new URLSearchParams(params).toString()
+    return this.request(`/invoices${queryString ? `?${queryString}` : ''}`)
   }
 
-  getToken() {
-    return this.token;
+  async getInvoice(invoiceId) {
+    return this.request(`/invoices/${invoiceId}`)
+  }
+
+  async createInvoice(invoiceData) {
+    return this.request('/invoices', {
+      method: 'POST',
+      body: JSON.stringify(invoiceData)
+    })
+  }
+
+  async updateInvoice(invoiceId, invoiceData) {
+    return this.request(`/invoices/${invoiceId}`, {
+      method: 'PUT',
+      body: JSON.stringify(invoiceData)
+    })
+  }
+
+  async deleteInvoice(invoiceId) {
+    return this.request(`/invoices/${invoiceId}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async sendInvoice(invoiceId) {
+    return this.request(`/invoices/${invoiceId}/send`, {
+      method: 'POST'
+    })
+  }
+
+  async downloadInvoice(invoiceId) {
+    return this.request(`/invoices/${invoiceId}/download`)
+  }
+
+  async getInvoiceStatistics() {
+    return this.request('/invoices/statistics')
+  }
+
+  async markInvoiceAsPaid(invoiceId) {
+    return this.request(`/invoices/${invoiceId}/paid`, {
+      method: 'POST'
+    })
+  }
+
+  async viewInvoice(invoiceId) {
+    return this.request(`/invoices/${invoiceId}/view`, {
+      method: 'POST'
+    })
+  }
+
+  async duplicateInvoice(invoiceId) {
+    return this.request(`/invoices/${invoiceId}/duplicate`, {
+      method: 'POST'
+    })
+  }
+
+  async getOverdueInvoices() {
+    return this.request('/invoices/overdue')
+  }
+
+  async getTopClientsByRevenue(limit = 10) {
+    return this.request(`/invoices/analytics/top-clients?limit=${limit}`)
+  }
+
+  // Social Media methods
+  async getSocialPosts(params = {}) {
+    const queryString = new URLSearchParams(params).toString()
+    return this.request(`/social${queryString ? `?${queryString}` : ''}`)
+  }
+
+  async getSocialPost(postId) {
+    return this.request(`/social/${postId}`)
+  }
+
+  async createSocialPost(postData) {
+    return this.request('/social', {
+      method: 'POST',
+      body: JSON.stringify(postData)
+    })
+  }
+
+  async updateSocialPost(postId, postData) {
+    return this.request(`/social/${postId}`, {
+      method: 'PUT',
+      body: JSON.stringify(postData)
+    })
+  }
+
+  async deleteSocialPost(postId) {
+    return this.request(`/social/${postId}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async publishSocialPost(postId) {
+    return this.request(`/social/${postId}/publish`, {
+      method: 'POST'
+    })
+  }
+
+  async getConnectedSocialAccounts() {
+    return this.request('/social/accounts')
+  }
+
+  async connectSocialAccount(platform, accountData) {
+    return this.request(`/social/accounts/${platform}/connect`, {
+      method: 'POST',
+      body: JSON.stringify(accountData)
+    })
+  }
+
+  async disconnectSocialAccount(platform) {
+    return this.request(`/social/accounts/${platform}/disconnect`, {
+      method: 'DELETE'
+    })
+  }
+
+  async getSocialAnalytics(params = {}) {
+    const queryString = new URLSearchParams(params).toString()
+    return this.request(`/social/analytics${queryString ? `?${queryString}` : ''}`)
+  }
+
+  async getScheduledSocialPosts() {
+    return this.request('/social/scheduled/pending')
+  }
+
+  async updateSocialPostPerformance(postId, performanceData) {
+    return this.request(`/social/${postId}/performance`, {
+      method: 'POST',
+      body: JSON.stringify(performanceData)
+    })
   }
 
   // Health check
   async healthCheck() {
-    return this.request('/health');
+    return this.request('/health')
   }
 }
 
-// Create and export singleton instance
-const apiClient = new ApiClient();
-
-export default apiClient; 
+const apiClient = new ApiClient()
+export default apiClient 

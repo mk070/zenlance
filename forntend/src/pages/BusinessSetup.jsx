@@ -110,16 +110,18 @@ const BusinessSetup = () => {
     
     try {
       const result = await updateUserProfile({
-        business_name: formData.businessName.trim(),
-        business_type: formData.businessType || null,
+        businessName: formData.businessName.trim(),
+        businessType: formData.businessType || null,
         industry: formData.industry || null,
-        location: formData.location.trim() || null,
-        team_size: formData.teamSize || null,
-        primary_goal: formData.primaryGoal || null,
-        experience_level: formData.experienceLevel || null,
-        monthly_revenue: formData.monthlyRevenue || null,
-        current_tools: formData.currentTools.length > 0 ? formData.currentTools : null,
-        onboarding_completed: true
+        location: {
+          country: formData.location.trim() || null
+        },
+        teamSize: formData.teamSize || null,
+        primaryGoal: formData.primaryGoal || null,
+        experienceLevel: formData.experienceLevel || null,
+        monthlyRevenue: formData.monthlyRevenue || null,
+        currentTools: formData.currentTools.length > 0 ? formData.currentTools : null,
+        onboardingCompleted: true
       })
       
       if (result.success) {
@@ -128,15 +130,21 @@ const BusinessSetup = () => {
       }
     } catch (error) {
       console.error('Business setup error:', error)
+      toast.error('Failed to save business details. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSkip = () => {
-    // Mark onboarding as completed and redirect
-    updateUserProfile({ onboarding_completed: true })
-    navigate('/dashboard')
+  const handleSkip = async () => {
+    try {
+      // Mark onboarding as completed and redirect
+      await updateUserProfile({ onboardingCompleted: true })
+      navigate('/dashboard')
+    } catch (error) {
+      console.error('Skip onboarding error:', error)
+      navigate('/dashboard') // Still redirect even if update fails
+    }
   }
 
   return (

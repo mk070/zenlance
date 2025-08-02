@@ -22,7 +22,7 @@ console.log('- PORT:', process.env.PORT);
 console.log('- MONGODB_URI:', process.env.MONGODB_URI ? 'Set' : 'Not set');
 console.log('- JWT_SECRET:', process.env.JWT_SECRET ? 'Set' : 'Not set');
 
-let authRoutes, userRoutes, profileRoutes, leadsRoutes, clientsRoutes, errorHandler, notFound, logger;
+let authRoutes, userRoutes, profileRoutes, leadsRoutes, clientsRoutes, invoicesRoutes, socialRoutes, errorHandler, notFound, logger;
 
 try {
   console.log('🔍 Loading route modules...');
@@ -47,6 +47,14 @@ try {
   const clientsModule = await import('./routes/clients.js');
   clientsRoutes = clientsModule.default;
   console.log('✅ Clients routes loaded');
+  
+  const invoicesModule = await import('./routes/invoices.js');
+  invoicesRoutes = invoicesModule.default;
+  console.log('✅ Invoices routes loaded');
+  
+  const socialModule = await import('./routes/social.js');
+  socialRoutes = socialModule.default;
+  console.log('✅ Social routes loaded');
   
   // Import middleware
   console.log('🔍 Loading middleware...');
@@ -231,6 +239,12 @@ try {
   
   app.use('/api/clients', clientsRoutes);
   console.log('✅ Clients routes mounted');
+  
+  app.use('/api/invoices', invoicesRoutes);
+  console.log('✅ Invoices routes mounted');
+  
+  app.use('/api/social', socialRoutes);
+  console.log('✅ Social routes mounted');
 } catch (error) {
   console.error('❌ Error mounting routes:', error);
   console.error('Error details:', error.message);

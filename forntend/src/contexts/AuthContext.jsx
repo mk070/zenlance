@@ -1,13 +1,14 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import apiClient from '../lib/api-client.js'
 import toast from 'react-hot-toast'
+import { getAccessToken, isAuthenticated, setTokens, removeTokens } from '../lib/auth-utils'
 
 const AuthContext = createContext({})
 
 export const useAuth = () => {
   const context = useContext(AuthContext)
   if (!context) {
-    throw new Error('useAuth must be used within AuthProvider')
+    throw new Error('useAuth must be used within an AuthProvider')
   }
   return context
 }
@@ -18,27 +19,27 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true)
   const [sessionChecked, setSessionChecked] = useState(false)
 
-  // Initialize auth state on mount
+  // Initialize authentication state
   useEffect(() => {
     const initializeAuth = async () => {
       try {
-        const tokens = apiClient.getStoredTokens()
+        const accessToken = getAccessToken()
         
-        if (tokens.accessToken) {
+        if (accessToken && isAuthenticated()) {
           // Try to get current user
           const userResult = await apiClient.getCurrentUser()
           
           if (userResult.success) {
-            setUser(userResult.data.user)
+            setUser(userResult.user)
             
             // Get user profile
             const profileResult = await apiClient.getUserProfile()
             if (profileResult.success) {
-              setUserProfile(profileResult.data.profile)
+              setUserProfile(profileResult.profile)
             }
           } else {
             // Token might be expired, clear it
-            apiClient.clearTokens()
+            removeTokens()
           }
         }
         
@@ -54,360 +55,242 @@ export const AuthProvider = ({ children }) => {
     initializeAuth()
   }, [])
 
-  const signUp = async (email, password, metadata = {}) => {
+  // Sign up function
+  const signUp = async (email, password, firstName, lastName) => {
     try {
-      setLoading(true)
-
-      // Only send basic required fields during signup
-      const userData = {
+      const result = await apiClient.signUp({
         email,
         password,
-        firstName: metadata.first_name || metadata.firstName,
-        lastName: metadata.last_name || metadata.lastName
-      }
-
-      const result = await apiClient.signUp(userData)
+        firstName,
+        lastName
+      })
 
       if (result.success) {
-        toast.success('Account created successfully! Please check your email for the verification code.')
-        return { success: true, needsVerification: true, userId: result.data.userId }
+        toast.success('Account created successfully! Please check your email for verification.')
+        return { success: true }
       } else {
-        toast.error(result.error)
-        return { success: false, error: result.error }
+        toast.error(result.error || 'Failed to create account')
+        return { success: false, error: result.error, validationErrors: result.validationErrors }
       }
     } catch (error) {
       console.error('Signup error:', error)
-      toast.error('An error occurred during sign up')
-      return { success: false, error: error.message }
-    } finally {
-      setLoading(false)
+      toast.error('Network error. Please try again.')
+      return { success: false, error: 'Network error' }
     }
   }
 
+  // Sign in function
   const signIn = async (email, password) => {
     try {
-      setLoading(true)
-
       const result = await apiClient.signIn(email, password)
 
       if (result.success) {
-        setUser(result.data.user)
-        setUserProfile(result.data.user.profile)
+        // Store tokens
+        setTokens(result.tokens.accessToken, result.tokens.refreshToken)
+        
+        // Set user data
+        setUser(result.user)
+        setUserProfile(result.user.profile)
+        
         toast.success('Welcome back!')
-        return { success: true }
+        return { success: true, user: result.user }
       } else {
-        if (result.error.includes('verify your email')) {
-          return { success: false, error: result.error, needsVerification: true }
-        }
-        toast.error(result.error)
+        toast.error(result.error || 'Failed to sign in')
         return { success: false, error: result.error }
       }
     } catch (error) {
       console.error('Signin error:', error)
-      toast.error('An error occurred during sign in')
-      return { success: false, error: error.message }
-    } finally {
-      setLoading(false)
+      toast.error('Network error. Please try again.')
+      return { success: false, error: 'Network error' }
     }
   }
 
-  const verifyOTP = async (email, token, type = 'signup') => {
+  // OTP verification function
+  const verifyOTP = async (email, otp) => {
     try {
-      console.log('🔍 AuthContext: Starting OTP verification', { email, token, type })
-      
-      if (!email || !token) {
-        const error = 'Email and verification code are required'
-        console.log('🔍 AuthContext: Validation failed:', error)
-        return { success: false, error }
-      }
-
-      if (token.length !== 6 || !/^\d{6}$/.test(token)) {
-        const error = 'Please enter a valid 6-digit verification code'
-        console.log('🔍 AuthContext: Token format invalid:', error)
-        return { success: false, error }
-      }
-
-      console.log('🔍 AuthContext: Calling API to verify OTP...')
-      
-      const result = await apiClient.verifyOTP(email, token)
-
-      console.log('🔍 AuthContext: API response:', { success: result.success, error: result.error })
+      const result = await apiClient.verifyOTP(email, otp)
 
       if (result.success) {
-        console.log('🔍 AuthContext: OTP verified successfully')
-        setUser(result.data.user)
-        setUserProfile(result.data.user.profile)
+        // Store tokens
+        setTokens(result.tokens.accessToken, result.tokens.refreshToken)
+        
+        // Set user data
+        setUser(result.user)
+        setUserProfile(result.user.profile)
+        
         toast.success('Email verified successfully!')
-        return { success: true, user: result.data.user }
+        return { success: true, user: result.user, profile: result.user.profile }
       } else {
-        console.log('🔍 AuthContext: OTP verification failed:', result.error)
+        toast.error(result.error || 'Failed to verify OTP')
         return { success: false, error: result.error }
       }
     } catch (error) {
-      console.error('🔍 AuthContext: OTP verification error:', error)
-      return { success: false, error: 'Something went wrong. Please try again.' }
+      console.error('OTP verification error:', error)
+      toast.error('Network error. Please try again.')
+      return { success: false, error: 'Network error' }
     }
   }
 
+  // Resend OTP function
   const resendOTP = async (email) => {
     try {
       const result = await apiClient.resendOTP(email)
-      
+
       if (result.success) {
-        toast.success('Verification code sent successfully')
+        toast.success('Verification code sent to your email!')
         return { success: true }
       } else {
-        toast.error(result.error)
+        toast.error(result.error || 'Failed to send verification code')
         return { success: false, error: result.error }
       }
     } catch (error) {
       console.error('Resend OTP error:', error)
-      toast.error('Failed to resend verification code')
-      return { success: false, error: error.message }
+      toast.error('Network error. Please try again.')
+      return { success: false, error: 'Network error' }
     }
   }
 
-  const signOut = async () => {
+  // Forgot password function
+  const forgotPassword = async (email) => {
     try {
-      setLoading(true)
-      
-      await apiClient.signOut()
-      
-      // Clear local state
-      setUser(null)
-      setUserProfile(null)
-      
-      toast.success('Signed out successfully')
-      return { success: true }
-    } catch (error) {
-      console.error('Signout error:', error)
-      toast.error('An error occurred during sign out')
-      return { success: false, error: error.message }
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const resetPassword = async (email) => {
-    try {
-      setLoading(true)
-
       const result = await apiClient.forgotPassword(email)
 
       if (result.success) {
-        toast.success('Password reset email sent!')
+        toast.success('Password reset link sent to your email!')
         return { success: true }
       } else {
-        toast.error(result.error)
+        toast.error(result.error || 'Failed to send reset link')
         return { success: false, error: result.error }
       }
     } catch (error) {
-      console.error('Password reset error:', error)
-      toast.error('An error occurred sending the reset email')
-      return { success: false, error: error.message }
-    } finally {
-      setLoading(false)
+      console.error('Forgot password error:', error)
+      toast.error('Network error. Please try again.')
+      return { success: false, error: 'Network error' }
     }
   }
 
-  const updatePassword = async (currentPassword, newPassword) => {
+  // Reset password function
+  const resetPassword = async (token, newPassword) => {
     try {
-      setLoading(true)
-
-      const result = await apiClient.changePassword(currentPassword, newPassword)
+      const result = await apiClient.resetPassword(token, newPassword)
 
       if (result.success) {
-        toast.success('Password updated successfully!')
-        // Force sign out since all refresh tokens are cleared
-        await signOut()
+        toast.success('Password reset successfully!')
         return { success: true }
       } else {
-        toast.error(result.error)
+        toast.error(result.error || 'Failed to reset password')
         return { success: false, error: result.error }
       }
     } catch (error) {
-      console.error('Password update error:', error)
-      toast.error('An error occurred updating password')
-      return { success: false, error: error.message }
-    } finally {
-      setLoading(false)
+      console.error('Reset password error:', error)
+      toast.error('Network error. Please try again.')
+      return { success: false, error: 'Network error' }
     }
   }
 
-  const updateUserProfile = async (updates) => {
-    if (!user) return { success: false, error: 'No user logged in' }
-
+  // Update user profile function
+  const updateUserProfile = async (profileData) => {
     try {
-      const result = await apiClient.updateUserProfile(updates)
-
-      if (result.success) {
-        setUserProfile(result.data.profile)
-        toast.success('Profile updated successfully!')
-        return { success: true, data: result.data.profile }
-      } else {
-        toast.error(result.error)
-        return { success: false, error: result.error }
-      }
-    } catch (error) {
-      console.error('Profile update error:', error)
-      toast.error('Failed to update profile')
-      return { success: false, error: error.message }
-    }
-  }
-
-  const completeBusinessSetup = async (businessData) => {
-    if (!user) return { success: false, error: 'No user logged in' }
-
-    try {
-      setLoading(true)
-
-      // Transform frontend data to backend format
-      const profileData = {
-        businessName: businessData.businessName,
-        businessType: businessData.businessType,
-        industry: businessData.industry,
-        location: businessData.location || {},
-        teamSize: businessData.teamSize,
-        primaryGoal: businessData.primaryGoal,
-        experienceLevel: businessData.experienceLevel,
-        monthlyRevenue: businessData.monthlyRevenue,
-        currentTools: businessData.currentTools || [],
-        // Mark business setup as completed
-        onboarding: {
-          currentStep: 'completed',
-          completedSteps: ['email_verification', 'business_setup'],
-          completionScore: 100
-        }
-      }
-
       const result = await apiClient.updateUserProfile(profileData)
-      
+
       if (result.success) {
-        setUserProfile(result.data.profile)
-        toast.success('Business setup completed successfully!')
-        return { success: true }
+        setUserProfile(result.profile)
+        toast.success('Profile updated successfully!')
+        return { success: true, profile: result.profile }
       } else {
-        toast.error(result.error)
+        toast.error(result.error || 'Failed to update profile')
+        return { success: false, error: result.error }
+      }
+    } catch (error) {
+      console.error('Update profile error:', error)
+      toast.error('Network error. Please try again.')
+      return { success: false, error: 'Network error' }
+    }
+  }
+
+  // Complete business setup function
+  const completeBusinessSetup = async (businessData) => {
+    try {
+      const result = await apiClient.updateUserProfile({
+        ...businessData,
+        onboardingCompleted: true
+      })
+
+      if (result.success) {
+        setUserProfile(result.profile)
+        toast.success('Business setup completed!')
+        return { success: true, profile: result.profile }
+      } else {
+        toast.error(result.error || 'Failed to complete business setup')
         return { success: false, error: result.error }
       }
     } catch (error) {
       console.error('Business setup error:', error)
-      toast.error('Failed to complete business setup')
-      return { success: false, error: error.message }
+      toast.error('Network error. Please try again.')
+      return { success: false, error: 'Network error' }
+    }
+  }
+
+  // Sign out function
+  const signOut = async () => {
+    try {
+      await apiClient.signOut()
+    } catch (error) {
+      console.error('Error during signout:', error)
     } finally {
-      setLoading(false)
+      // Clear local state regardless of API response
+      setUser(null)
+      setUserProfile(null)
+      removeTokens()
+      toast.success('Signed out successfully')
     }
   }
 
-  const fetchUserProfile = useCallback(async () => {
-    try {
-      const result = await apiClient.getUserProfile()
-      
-      if (result.success) {
-        setUserProfile(result.data.profile)
-      } else {
-        console.error('Error fetching user profile:', result.error)
-      }
-    } catch (error) {
-      console.error('Error in fetchUserProfile:', error)
-    }
-  }, [])
-
-  const refreshSession = async () => {
-    try {
-      const result = await apiClient.refreshAccessToken()
-      return result
-    } catch (error) {
-      console.error('Session refresh error:', error)
-      return { success: false, error: error.message }
-    }
-  }
-
-  // Simple validation functions (moved from auth-utils)
-  const validateEmail = (email) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    const isValid = emailRegex.test(email)
-    return {
-      isValid,
-      errors: isValid ? [] : ['Please enter a valid email address']
-    }
-  }
-
+  // Password validation function
   const validatePassword = (password) => {
+    const checks = {
+      minLength: password.length >= 8,
+      hasUppercase: /[A-Z]/.test(password),
+      hasLowercase: /[a-z]/.test(password),
+      hasNumber: /\d/.test(password),
+      hasSpecialChar: /[@$!%*?&]/.test(password)
+    }
+
     const errors = []
     const warnings = []
+
+    if (!checks.minLength) errors.push('At least 8 characters')
+    if (!checks.hasUppercase) errors.push('One uppercase letter')
+    if (!checks.hasLowercase) errors.push('One lowercase letter')
+    if (!checks.hasNumber) errors.push('One number')
+    if (!checks.hasSpecialChar) errors.push('One special character (@$!%*?&)')
+
+    // Calculate strength
+    const passedChecks = Object.values(checks).filter(Boolean).length
     let strength = 0
-    
-    if (!password) {
-      errors.push('Password is required')
-      return {
-        isValid: false,
-        errors,
-        warnings,
-        strength: 0,
-        strengthLabel: 'No Password',
-        strengthColor: 'gray'
-      }
-    }
+    let strengthLabel = 'Very Weak'
+    let strengthColor = 'text-red-500'
 
-    // Check requirements and calculate strength
-    if (password.length >= 8) {
-      strength += 1
-    } else {
-      errors.push('Password must be at least 8 characters long')
-    }
-
-    if (/(?=.*[a-z])/.test(password)) {
-      strength += 1
-    } else {
-      errors.push('Password must contain at least one lowercase letter')
-    }
-
-    if (/(?=.*[A-Z])/.test(password)) {
-      strength += 1
-    } else {
-      errors.push('Password must contain at least one uppercase letter')
-    }
-
-    if (/(?=.*\d)/.test(password)) {
-      strength += 1
-    } else {
-      errors.push('Password must contain at least one number')
-    }
-
-    if (/(?=.*[@$!%*?&])/.test(password)) {
-      strength += 1
-    } else {
-      errors.push('Password must contain at least one special character')
-    }
-
-    // Bonus strength points
-    if (password.length >= 12) {
-      strength += 1
-      warnings.push('Great! Long passwords are more secure')
-    }
-
-    // Determine strength label and color
-    let strengthLabel, strengthColor
-    
-    if (strength <= 1) {
-      strengthLabel = 'Very Weak'
-      strengthColor = 'red'
-    } else if (strength === 2) {
-      strengthLabel = 'Weak'
-      strengthColor = 'orange'
-    } else if (strength === 3) {
-      strengthLabel = 'Fair'
-      strengthColor = 'yellow'
-    } else if (strength === 4) {
-      strengthLabel = 'Good'
-      strengthColor = 'blue'
-    } else if (strength === 5) {
-      strengthLabel = 'Strong'
-      strengthColor = 'green'
-    } else {
+    if (passedChecks >= 5) {
+      strength = 100
       strengthLabel = 'Very Strong'
-      strengthColor = 'emerald'
+      strengthColor = 'text-emerald-500'
+    } else if (passedChecks >= 4) {
+      strength = 80
+      strengthLabel = 'Strong'
+      strengthColor = 'text-green-500'
+    } else if (passedChecks >= 3) {
+      strength = 60
+      strengthLabel = 'Medium'
+      strengthColor = 'text-yellow-500'
+    } else if (passedChecks >= 2) {
+      strength = 40
+      strengthLabel = 'Weak'
+      strengthColor = 'text-orange-500'
+    } else if (passedChecks >= 1) {
+      strength = 20
+      strengthLabel = 'Very Weak'
+      strengthColor = 'text-red-500'
     }
 
     return {
@@ -420,52 +303,47 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  // Password match validation
   const validatePasswordMatch = (password, confirmPassword) => {
-    const isValid = password === confirmPassword && password.length > 0
+    const isMatch = password === confirmPassword
     return {
-      isValid,
-      errors: isValid ? [] : ['Passwords do not match'],
-      error: isValid ? null : 'Passwords do not match'
+      isValid: isMatch,
+      error: isMatch ? null : 'Passwords do not match'
     }
   }
 
-  const validateBusinessName = (businessName) => {
-    const isValid = businessName && businessName.trim().length >= 2
+  // Email validation function
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     return {
-      isValid,
-      errors: isValid ? [] : ['Business name must be at least 2 characters long']
+      isValid: emailRegex.test(email),
+      error: emailRegex.test(email) ? null : 'Please enter a valid email address'
     }
+  }
+
+  // Check if user is authenticated
+  const isUserAuthenticated = () => {
+    return isAuthenticated() && user !== null
   }
 
   const value = {
-    // State
     user,
     userProfile,
     loading,
     sessionChecked,
-    
-    // Authentication methods
     signUp,
     signIn,
     verifyOTP,
     resendOTP,
-    signOut,
+    forgotPassword,
     resetPassword,
-    updatePassword,
-    
-    // Profile methods
+    signOut,
     updateUserProfile,
-    fetchUserProfile,
     completeBusinessSetup,
-    
-    // Utility methods
-    refreshSession,
-    
-    // Validation methods
-    validateEmail,
     validatePassword,
     validatePasswordMatch,
-    validateBusinessName
+    validateEmail,
+    isAuthenticated: isUserAuthenticated
   }
 
   return (
@@ -473,6 +351,4 @@ export const AuthProvider = ({ children }) => {
       {children}
     </AuthContext.Provider>
   )
-}
-
-export default AuthProvider 
+} 
