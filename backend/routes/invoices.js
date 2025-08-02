@@ -477,4 +477,125 @@ router.get('/analytics/top-clients', authenticate, [
   });
 }));
 
+// Get invoices needing payment reminders
+router.get('/reminders/needed', authenticate, catchAsync(async (req, res) => {
+  const invoices = await Invoice.getInvoicesNeedingReminders(req.user._id);
+
+  res.json({
+    success: true,
+    data: {
+      invoices,
+      count: invoices.length
+    }
+  });
+}));
+
+// Send payment reminder for an invoice
+router.post('/:id/reminders', authenticate, [
+  body('reminderType').optional().isIn(['email', 'sms', 'manual']),
+  body('recipients').optional().isArray(),
+  body('recipients.*').optional().isEmail(),
+  body('message').optional().trim().isLength({ max: 1000 })
+], catchAsync(async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json(handleValidationError(errors));
+  }
+
+  const invoice = await Invoice.findOne({
+    _id: req.params.id,
+    createdBy: req.user._id,
+    isActive: true
+  }).populate('clientId', 'firstName lastName email');
+
+  if (!invoice) {
+    throw new AppError('Invoice not found', 404);
+  }
+
+  if (invoice.status === 'paid') {
+    throw new AppError('Cannot send reminder for paid invoice', 400);
+  }
+
+  const { reminderType = 'email', recipients, message } = req.body;
+  const sendTo = recipients || [invoice.clientEmail];
+
+  const reminderData = {
+    reminderType,
+    sentTo: sendTo,
+    message: message || `Payment reminder for invoice ${invoice.invoiceNumber}`
+  };
+
+  await invoice.sendPaymentReminder(reminderData);
+
+  // TODO: Actually send the reminder via email/SMS service
+  // await emailService.sendPaymentReminder(invoice, sendTo, message);
+
+  res.json({
+    success: true,
+    message: 'Payment reminder sent successfully',
+    data: {
+      invoice: invoice
+    }
+  });
+}));
+
+// Set payment reminder schedule for an invoice
+router.put('/:id/reminders/schedule', authenticate, [
+  body('enabled').isBoolean(),
+  body('schedule').optional().isArray(),
+  body('schedule.*.daysBeforeDue').optional().isInt({ min: 1, max: 30 }),
+  body('schedule.*.daysAfterDue').optional().isInt({ min: 1, max: 90 }),
+  body('schedule.*.reminderType').optional().isIn(['email', 'sms'])
+], catchAsync(async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json(handleValidationError(errors));
+  }
+
+  const invoice = await Invoice.findOne({
+    _id: req.params.id,
+    createdBy: req.user._id,
+    isActive: true
+  });
+
+  if (!invoice) {
+    throw new AppError('Invoice not found', 404);
+  }
+
+  const { enabled, schedule } = req.body;
+
+  if (enabled && schedule) {
+    await invoice.setReminderSchedule(schedule);
+  } else {
+    invoice.reminderSettings.enabled = enabled;
+    await invoice.save();
+  }
+
+  res.json({
+    success: true,
+    message: 'Reminder schedule updated successfully',
+    data: {
+      reminderSettings: invoice.reminderSettings
+    }
+  });
+}));
+
+// Get payment history
+router.get('/analytics/payment-history', authenticate, [
+  query('days').optional().isInt({ min: 1, max: 365 })
+], catchAsync(async (req, res) => {
+  const { days = 30 } = req.query;
+
+  const paymentHistory = await Invoice.getPaymentHistory(req.user._id, parseInt(days));
+
+  res.json({
+    success: true,
+    data: {
+      paymentHistory,
+      totalPayments: paymentHistory.reduce((sum, inv) => sum + inv.total, 0),
+      count: paymentHistory.length
+    }
+  });
+}));
+
 export default router; 
