@@ -5,6 +5,8 @@ import {
   Users, 
   UserCheck, 
   FileText, 
+  FileSpreadsheet,
+  FolderOpen,
   Share2, 
   Settings, 
   User, 
@@ -36,6 +38,18 @@ const Layout = ({ children }) => {
       label: 'Clients', 
       icon: UserCheck, 
       path: '/clients'
+    },
+    { 
+      id: 'quotes', 
+      label: 'Quotes', 
+      icon: FileSpreadsheet, 
+      path: '/quotes'
+    },
+    { 
+      id: 'projects', 
+      label: 'Projects', 
+      icon: FolderOpen, 
+      path: '/projects'
     },
     { 
       id: 'invoices', 

@@ -148,6 +148,43 @@ const invoiceSchema = new mongoose.Schema({
   paymentDate: Date,
   paymentReference: String,
   
+  // Payment Reminders
+  paymentReminders: [{
+    sentDate: {
+      type: Date,
+      default: Date.now
+    },
+    reminderType: {
+      type: String,
+      enum: ['email', 'sms', 'manual'],
+      default: 'email'
+    },
+    sentTo: [String],
+    message: String,
+    status: {
+      type: String,
+      enum: ['sent', 'failed', 'pending'],
+      default: 'pending'
+    }
+  }],
+  reminderSettings: {
+    enabled: {
+      type: Boolean,
+      default: true
+    },
+    schedule: [{
+      daysBeforeDue: Number,
+      daysAfterDue: Number,
+      reminderType: {
+        type: String,
+        enum: ['email', 'sms'],
+        default: 'email'
+      }
+    }],
+    lastReminderDate: Date,
+    nextReminderDate: Date
+  },
+  
   // Tracking Information
   sentDate: Date,
   sentTo: [String], // Array of email addresses
@@ -334,6 +371,7 @@ invoiceSchema.methods.duplicate = function() {
   delete duplicateData.downloadCount;
   delete duplicateData.paymentDate;
   delete duplicateData.paymentReference;
+  delete duplicateData.paymentReminders;
   delete duplicateData.createdAt;
   delete duplicateData.updatedAt;
   
@@ -346,6 +384,73 @@ invoiceSchema.methods.duplicate = function() {
   duplicateData.dueDate = newDueDate;
 
   return new this.constructor(duplicateData);
+};
+
+invoiceSchema.methods.sendPaymentReminder = function(reminderData) {
+  this.paymentReminders.push({
+    ...reminderData,
+    sentDate: new Date(),
+    status: 'sent'
+  });
+  
+  this.reminderSettings.lastReminderDate = new Date();
+  
+  // Calculate next reminder date based on schedule
+  if (this.reminderSettings.enabled && this.reminderSettings.schedule.length > 0) {
+    const daysUntilDue = this.daysUntilDue;
+    const nextSchedule = this.reminderSettings.schedule.find(schedule => {
+      if (schedule.daysBeforeDue && daysUntilDue > 0 && daysUntilDue > schedule.daysBeforeDue) {
+        return true;
+      }
+      if (schedule.daysAfterDue && daysUntilDue < 0 && Math.abs(daysUntilDue) < schedule.daysAfterDue) {
+        return true;
+      }
+      return false;
+    });
+    
+    if (nextSchedule) {
+      const nextDate = new Date();
+      if (nextSchedule.daysBeforeDue) {
+        nextDate.setDate(this.dueDate.getDate() - nextSchedule.daysBeforeDue);
+      } else if (nextSchedule.daysAfterDue) {
+        nextDate.setDate(this.dueDate.getDate() + nextSchedule.daysAfterDue);
+      }
+      this.reminderSettings.nextReminderDate = nextDate;
+    }
+  }
+  
+  return this.save();
+};
+
+invoiceSchema.methods.setReminderSchedule = function(schedule) {
+  this.reminderSettings.schedule = schedule;
+  this.reminderSettings.enabled = true;
+  
+  // Calculate next reminder date
+  if (schedule.length > 0) {
+    const daysUntilDue = this.daysUntilDue;
+    const nextSchedule = schedule.find(s => {
+      if (s.daysBeforeDue && daysUntilDue > 0 && daysUntilDue <= s.daysBeforeDue) {
+        return true;
+      }
+      if (s.daysAfterDue && daysUntilDue < 0 && Math.abs(daysUntilDue) <= s.daysAfterDue) {
+        return true;
+      }
+      return false;
+    });
+    
+    if (nextSchedule) {
+      const nextDate = new Date();
+      if (nextSchedule.daysBeforeDue) {
+        nextDate.setDate(this.dueDate.getDate() - nextSchedule.daysBeforeDue);
+      } else if (nextSchedule.daysAfterDue) {
+        nextDate.setDate(this.dueDate.getDate() + nextSchedule.daysAfterDue);
+      }
+      this.reminderSettings.nextReminderDate = nextDate;
+    }
+  }
+  
+  return this.save();
 };
 
 // Static Methods
@@ -465,6 +570,44 @@ invoiceSchema.statics.getTopClients = function(userId, limit = 10) {
       $limit: limit
     }
   ]);
+};
+
+invoiceSchema.statics.getInvoicesNeedingReminders = function(userId) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  return this.find({
+    createdBy: userId,
+    isActive: true,
+    status: { $in: ['sent', 'overdue'] },
+    'reminderSettings.enabled': true,
+    $or: [
+      {
+        'reminderSettings.nextReminderDate': { $lte: today },
+        'reminderSettings.lastReminderDate': { $ne: today }
+      },
+      {
+        'reminderSettings.nextReminderDate': { $exists: false },
+        'reminderSettings.lastReminderDate': { $exists: false }
+      }
+    ]
+  })
+  .populate('clientId', 'firstName lastName company email')
+  .sort({ dueDate: 1 });
+};
+
+invoiceSchema.statics.getPaymentHistory = function(userId, days = 30) {
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+  
+  return this.find({
+    createdBy: userId,
+    isActive: true,
+    status: 'paid',
+    paymentDate: { $gte: startDate }
+  })
+  .populate('clientId', 'firstName lastName company')
+  .sort({ paymentDate: -1 });
 };
 
 const Invoice = mongoose.model('Invoice', invoiceSchema);

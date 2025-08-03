@@ -22,7 +22,7 @@ console.log('- PORT:', process.env.PORT);
 console.log('- MONGODB_URI:', process.env.MONGODB_URI ? 'Set' : 'Not set');
 console.log('- JWT_SECRET:', process.env.JWT_SECRET ? 'Set' : 'Not set');
 
-let authRoutes, userRoutes, profileRoutes, leadsRoutes, clientsRoutes, invoicesRoutes, socialRoutes, errorHandler, notFound, logger;
+let authRoutes, userRoutes, profileRoutes, leadsRoutes, clientsRoutes, invoicesRoutes, quotesRoutes, projectsRoutes, socialRoutes, errorHandler, notFound, logger;
 
 try {
   console.log('🔍 Loading route modules...');
@@ -51,6 +51,14 @@ try {
   const invoicesModule = await import('./routes/invoices.js');
   invoicesRoutes = invoicesModule.default;
   console.log('✅ Invoices routes loaded');
+  
+  const quotesModule = await import('./routes/quotes.js');
+  quotesRoutes = quotesModule.default;
+  console.log('✅ Quotes routes loaded');
+  
+  const projectsModule = await import('./routes/projects.js');
+  projectsRoutes = projectsModule.default;
+  console.log('✅ Projects routes loaded');
   
   const socialModule = await import('./routes/social.js');
   socialRoutes = socialModule.default;
@@ -242,6 +250,12 @@ try {
   
   app.use('/api/invoices', invoicesRoutes);
   console.log('✅ Invoices routes mounted');
+  
+  app.use('/api/quotes', quotesRoutes);
+  console.log('✅ Quotes routes mounted');
+  
+  app.use('/api/projects', projectsRoutes);
+  console.log('✅ Projects routes mounted');
   
   app.use('/api/social', socialRoutes);
   console.log('✅ Social routes mounted');
