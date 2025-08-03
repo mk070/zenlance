@@ -655,6 +655,131 @@ const InvoiceDetails = () => {
             )}
           </div>
 
+          {/* Payment Tracking Section */}
+          <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mb-8">
+            <h3 className="text-lg font-medium text-white mb-6">Payment Tracking</h3>
+            
+            {/* Payment Status */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+              <div className="bg-black/30 rounded-xl p-4">
+                <div className="flex items-center space-x-3 mb-2">
+                  <DollarSign className="w-5 h-5 text-emerald-400" />
+                  <span className="text-sm font-medium text-slate-300">Total Amount</span>
+                </div>
+                <div className="text-2xl font-semibold text-white">
+                  ${invoice.total.toLocaleString()}
+                </div>
+              </div>
+              
+              <div className="bg-black/30 rounded-xl p-4">
+                <div className="flex items-center space-x-3 mb-2">
+                  <CheckCircle className="w-5 h-5 text-blue-400" />
+                  <span className="text-sm font-medium text-slate-300">Amount Paid</span>
+                </div>
+                <div className="text-2xl font-semibold text-emerald-400">
+                  ${(invoice.payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0).toLocaleString()}
+                </div>
+              </div>
+              
+              <div className="bg-black/30 rounded-xl p-4">
+                <div className="flex items-center space-x-3 mb-2">
+                  <AlertCircle className="w-5 h-5 text-orange-400" />
+                  <span className="text-sm font-medium text-slate-300">Outstanding</span>
+                </div>
+                <div className="text-2xl font-semibold text-orange-400">
+                  ${(invoice.total - (invoice.payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0)).toLocaleString()}
+                </div>
+              </div>
+            </div>
+
+            {/* Payment Progress Bar */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-slate-300">Payment Progress</span>
+                <span className="text-sm text-slate-400">
+                  {Math.round(((invoice.payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0) / invoice.total) * 100)}%
+                </span>
+              </div>
+              <div className="w-full bg-slate-800/50 rounded-full h-3">
+                <div
+                  className="bg-gradient-to-r from-emerald-500 to-green-500 h-3 rounded-full transition-all duration-300"
+                  style={{ 
+                    width: `${Math.min(100, ((invoice.payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0) / invoice.total) * 100)}%` 
+                  }}
+                ></div>
+              </div>
+            </div>
+
+            {/* Payment History */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-md font-medium text-white">Payment History</h4>
+                {invoice.status !== 'paid' && (
+                  <button className="flex items-center space-x-2 bg-gradient-to-r from-emerald-500 to-green-500 text-white px-4 py-2 rounded-xl font-medium hover:from-emerald-400 hover:to-green-400 transition-all duration-200">
+                    <Plus className="w-4 h-4" />
+                    <span>Record Payment</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                {invoice.payments && invoice.payments.length > 0 ? (
+                  invoice.payments.map((payment, index) => (
+                    <div key={index} className="flex items-center justify-between p-4 bg-black/30 rounded-xl border border-white/10">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-10 h-10 bg-emerald-500/20 rounded-full flex items-center justify-center">
+                          <CreditCard className="w-5 h-5 text-emerald-400" />
+                        </div>
+                        <div>
+                          <div className="text-white font-medium">${payment.amount.toLocaleString()}</div>
+                          <div className="text-sm text-slate-400">
+                            {payment.method} • {new Date(payment.date).toLocaleDateString()}
+                          </div>
+                          {payment.reference && (
+                            <div className="text-xs text-slate-500">Ref: {payment.reference}</div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="px-3 py-1 bg-emerald-500/20 border border-emerald-400/30 rounded-full text-xs font-medium text-emerald-400">
+                          Received
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8">
+                    <CreditCard className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                    <p className="text-slate-400">No payments recorded yet</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Payment Methods */}
+            <div>
+              <h4 className="text-md font-medium text-white mb-4">Accepted Payment Methods</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="flex items-center space-x-2 p-3 bg-black/30 rounded-xl border border-white/10">
+                  <CreditCard className="w-5 h-5 text-blue-400" />
+                  <span className="text-sm text-slate-300">Credit Card</span>
+                </div>
+                <div className="flex items-center space-x-2 p-3 bg-black/30 rounded-xl border border-white/10">
+                  <DollarSign className="w-5 h-5 text-green-400" />
+                  <span className="text-sm text-slate-300">Bank Transfer</span>
+                </div>
+                <div className="flex items-center space-x-2 p-3 bg-black/30 rounded-xl border border-white/10">
+                  <CreditCard className="w-5 h-5 text-purple-400" />
+                  <span className="text-sm text-slate-300">PayPal</span>
+                </div>
+                <div className="flex items-center space-x-2 p-3 bg-black/30 rounded-xl border border-white/10">
+                  <DollarSign className="w-5 h-5 text-yellow-400" />
+                  <span className="text-sm text-slate-300">Cash</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Actions */}
           <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
             <h3 className="text-lg font-medium text-white mb-4">Actions</h3>

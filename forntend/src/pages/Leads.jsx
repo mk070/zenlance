@@ -172,9 +172,20 @@ const Leads = () => {
         }
       }
 
-      // Remove empty fields
+      // Ensure required fields have default values
+      if (!leadData.source || leadData.source === '') {
+        leadData.source = 'Other'
+      }
+      if (!leadData.status || leadData.status === '') {
+        leadData.status = 'New'
+      }
+      if (!leadData.priority || leadData.priority === '') {
+        leadData.priority = 'Medium'
+      }
+
+      // Remove empty fields (except required ones)
       Object.keys(leadData).forEach(key => {
-        if (leadData[key] === '') {
+        if (leadData[key] === '' && !['source', 'status', 'priority'].includes(key)) {
           delete leadData[key]
         }
       })
@@ -193,9 +204,9 @@ const Leads = () => {
           jobTitle: '',
           industry: '',
           website: '',
-          source: '',
-          status: 'new',
-          priority: 'medium',
+          source: 'Other',
+          status: 'New',
+          priority: 'Medium',
           projectType: '',
           budget: {
             min: '',
@@ -216,7 +227,18 @@ const Leads = () => {
       }
     } catch (error) {
       console.error('Error creating lead:', error)
-      toast.error('Failed to create lead')
+      
+      // Show user-friendly error message
+      let errorMessage = 'Failed to create lead'
+      if (error.message && error.message !== '[object Object]') {
+        errorMessage = error.message
+      } else if (error.data?.error) {
+        errorMessage = error.data.error
+      } else if (error.data?.message) {
+        errorMessage = error.data.message
+      }
+      
+      toast.error(errorMessage)
     } finally {
       setSaving(false)
     }

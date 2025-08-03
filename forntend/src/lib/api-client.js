@@ -571,6 +571,118 @@ class ApiClient {
     })
   }
 
+  // Quotes methods
+  async getQuotes(params = {}) {
+    const queryString = new URLSearchParams(params).toString()
+    return this.request(`/quotes${queryString ? `?${queryString}` : ''}`)
+  }
+
+  async getQuote(quoteId) {
+    return this.request(`/quotes/${quoteId}`)
+  }
+
+  async createQuote(quoteData) {
+    return this.request('/quotes', {
+      method: 'POST',
+      body: JSON.stringify(quoteData)
+    })
+  }
+
+  async updateQuote(quoteId, quoteData) {
+    return this.request(`/quotes/${quoteId}`, {
+      method: 'PUT',
+      body: JSON.stringify(quoteData)
+    })
+  }
+
+  async deleteQuote(quoteId) {
+    return this.request(`/quotes/${quoteId}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async duplicateQuote(quoteId) {
+    return this.request(`/quotes/${quoteId}/duplicate`, {
+      method: 'POST'
+    })
+  }
+
+  async sendQuote(quoteId) {
+    return this.request(`/quotes/${quoteId}/send`, {
+      method: 'POST'
+    })
+  }
+
+  async convertQuoteToInvoice(quoteId) {
+    return this.request(`/quotes/${quoteId}/convert`, {
+      method: 'POST'
+    })
+  }
+
+  // Projects methods
+  async getProjects(params = {}) {
+    const queryString = new URLSearchParams(params).toString()
+    return this.request(`/projects${queryString ? `?${queryString}` : ''}`)
+  }
+
+  async getProject(projectId) {
+    return this.request(`/projects/${projectId}`)
+  }
+
+  async createProject(projectData) {
+    return this.request('/projects', {
+      method: 'POST',
+      body: JSON.stringify(projectData)
+    })
+  }
+
+  async updateProject(projectId, projectData) {
+    return this.request(`/projects/${projectId}`, {
+      method: 'PUT',
+      body: JSON.stringify(projectData)
+    })
+  }
+
+  async deleteProject(projectId) {
+    return this.request(`/projects/${projectId}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async addProjectTask(projectId, taskData) {
+    return this.request(`/projects/${projectId}/tasks`, {
+      method: 'POST',
+      body: JSON.stringify(taskData)
+    })
+  }
+
+  async updateProjectTask(projectId, taskId, taskData) {
+    return this.request(`/projects/${projectId}/tasks/${taskId}`, {
+      method: 'PUT',
+      body: JSON.stringify(taskData)
+    })
+  }
+
+  async deleteProjectTask(projectId, taskId) {
+    return this.request(`/projects/${projectId}/tasks/${taskId}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async updateProjectStatus(projectId, status) {
+    return this.request(`/projects/${projectId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status })
+    })
+  }
+
+  async addProjectNote(projectId, noteData) {
+    return this.request(`/projects/${projectId}/notes`, {
+      method: 'POST',
+      body: JSON.stringify(noteData)
+    })
+  }
+
   // Health check
   async healthCheck() {
     return this.request('/health')

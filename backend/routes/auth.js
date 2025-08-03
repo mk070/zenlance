@@ -440,8 +440,15 @@ router.post('/signin', authRateLimit, signinValidation, handleValidationErrors, 
     }
 
     // Generate tokens
-    const accessToken = jwtUtils.generateAccessToken(user._id);
-    const refreshToken = jwtUtils.generateRefreshToken(user._id);
+    const tokenPayload = {
+      id: user._id,
+      email: user.email,
+      role: user.role,
+      isEmailVerified: user.isEmailVerified
+    };
+    
+    const accessToken = jwtUtils.generateAccessToken(tokenPayload);
+    const refreshToken = jwtUtils.generateRefreshToken(tokenPayload);
 
     // Store refresh token
     await user.addRefreshToken(refreshToken);
@@ -512,8 +519,15 @@ router.post('/verify-otp', otpRateLimit, otpValidation, handleValidationErrors, 
     await user.save({ validateBeforeSave: false });
 
     // Generate tokens
-    const accessToken = jwtUtils.generateAccessToken(user._id);
-    const refreshToken = jwtUtils.generateRefreshToken(user._id);
+    const tokenPayload = {
+      id: user._id,
+      email: user.email,
+      role: user.role,
+      isEmailVerified: user.isEmailVerified
+    };
+    
+    const accessToken = jwtUtils.generateAccessToken(tokenPayload);
+    const refreshToken = jwtUtils.generateRefreshToken(tokenPayload);
 
     // Store refresh token
     await user.addRefreshToken(refreshToken);
@@ -700,8 +714,15 @@ router.post('/refresh-token', validateRefreshToken, async (req, res, next) => {
     const oldRefreshToken = req.refreshToken;
 
     // Generate new tokens
-    const accessToken = jwtUtils.generateAccessToken(user._id);
-    const refreshToken = jwtUtils.generateRefreshToken(user._id);
+    const tokenPayload = {
+      id: user._id,
+      email: user.email,
+      role: user.role,
+      isEmailVerified: user.isEmailVerified
+    };
+    
+    const accessToken = jwtUtils.generateAccessToken(tokenPayload);
+    const refreshToken = jwtUtils.generateRefreshToken(tokenPayload);
 
     // Replace old refresh token with new one
     await user.replaceRefreshToken(oldRefreshToken, refreshToken);

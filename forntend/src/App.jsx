@@ -17,6 +17,10 @@ import LeadDetails from './pages/LeadDetails'
 import Clients from './pages/Clients'
 import ClientDetails from './pages/ClientDetails'
 import CreateClient from './pages/CreateClient'
+import Quotes from './pages/Quotes'
+import QuoteDetails from './pages/QuoteDetails'
+import Projects from './pages/Projects'
+import ProjectDetails from './pages/ProjectDetails'
 import Profile from './pages/Profile'
 import Settings from './pages/Settings'
 import InvoiceDetails from './pages/InvoiceDetails'
@@ -90,6 +94,54 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <ClientDetails />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/quotes" element={
+              <ProtectedRoute>
+                <Layout>
+                  <Quotes />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/quotes/:id" element={
+              <ProtectedRoute>
+                <Layout>
+                  <QuoteDetails />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/quotes/:id/edit" element={
+              <ProtectedRoute>
+                <Layout>
+                  <QuoteDetails />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/projects" element={
+              <ProtectedRoute>
+                <Layout>
+                  <Projects />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/projects/:id" element={
+              <ProtectedRoute>
+                <Layout>
+                  <ProjectDetails />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/projects/:id/edit" element={
+              <ProtectedRoute>
+                <Layout>
+                  <ProjectDetails />
                 </Layout>
               </ProtectedRoute>
             } />

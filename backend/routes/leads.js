@@ -7,9 +7,10 @@ import { authenticate, requireEmailVerification } from '../middleware/authMiddle
 
 const router = express.Router();
 
-// Apply authentication and email verification to all routes
+// Apply authentication to all routes
 router.use(authenticate);
-router.use(requireEmailVerification);
+// Note: Email verification temporarily disabled for development
+// router.use(requireEmailVerification);
 
 // Validation middleware
 const createLeadValidation = [

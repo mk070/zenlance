@@ -31,53 +31,23 @@ const Clients = () => {
   const [currentPage, setCurrentPage] = useState(1)
   const [clientsPerPage] = useState(10)
 
-  // Sample data
-  const sampleClients = [
-    {
-      _id: '1',
-      name: 'Tech Startup Inc.',
-      email: 'contact@techstartup.com',
-      phone: '+1 (555) 123-4567',
-      location: 'San Francisco, CA',
-      company: 'Tech Startup Inc.',
-      status: 'active',
-      joinDate: '2024-01-15',
-      projectsCount: 3,
-      totalValue: 15000
-    },
-    {
-      _id: '2',
-      name: 'Creative Agency',
-      email: 'hello@creativeagency.com',
-      phone: '+1 (555) 987-6543',
-      location: 'New York, NY',
-      company: 'Creative Solutions',
-      status: 'active',
-      joinDate: '2024-02-20',
-      projectsCount: 2,
-      totalValue: 8500
-    },
-    {
-      _id: '3',
-      name: 'Fashion Brand',
-      email: 'info@fashionbrand.com',
-      phone: '+1 (555) 456-7890',
-      location: 'Los Angeles, CA',
-      company: 'Style Co.',
-      status: 'inactive',
-      joinDate: '2024-03-10',
-      projectsCount: 1,
-      totalValue: 3500
-    }
-  ]
+  // Real clients from API
 
   useEffect(() => {
     const loadClients = async () => {
       try {
-        setClients(sampleClients)
+        const result = await apiClient.getClients()
+        if (result.success) {
+          setClients(result.data.clients || [])
+        } else {
+          console.error('Failed to load clients:', result.error)
+          toast.error('Failed to load clients')
+          setClients([])
+        }
       } catch (error) {
         console.error('Error loading clients:', error)
         toast.error('Failed to load clients')
+        setClients([])
       } finally {
         setLoading(false)
       }
@@ -100,7 +70,8 @@ const Clients = () => {
   }
 
   const filteredClients = clients.filter(client => {
-    const matchesSearch = client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim() || client.company || ''
+    const matchesSearch = clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          client.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          client.company.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesStatus = selectedStatus === 'all' || client.status === selectedStatus
@@ -253,7 +224,7 @@ const Clients = () => {
                         </div>
                         <div>
                           <p className="font-medium text-white group-hover:text-cyan-300 transition-colors">
-                            {client.name}
+                            {`${client.firstName || ''} ${client.lastName || ''}`.trim() || client.company || 'Unknown Client'}
                           </p>
                           <p className="text-sm text-slate-400">{client.company}</p>
                         </div>
@@ -265,12 +236,14 @@ const Clients = () => {
                       <div className="space-y-1">
                         <div className="flex items-center space-x-2 text-sm text-slate-300">
                           <Mail className="w-4 h-4" />
-                          <span className="truncate">{client.email}</span>
+                          <span className="truncate">{client.email || 'No email'}</span>
                         </div>
-                        <div className="flex items-center space-x-2 text-sm text-slate-400">
-                          <Phone className="w-4 h-4" />
-                          <span>{client.phone}</span>
-                        </div>
+                        {client.phone && (
+                          <div className="flex items-center space-x-2 text-sm text-slate-400">
+                            <Phone className="w-4 h-4" />
+                            <span>{client.phone}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -278,27 +251,31 @@ const Clients = () => {
                     <div className="col-span-2">
                       <div className="flex items-center space-x-2 text-sm text-slate-300">
                         <MapPin className="w-4 h-4" />
-                        <span>{client.location}</span>
+                        <span>
+                          {[client.address?.city, client.address?.state, client.address?.country]
+                            .filter(Boolean)
+                            .join(', ') || 'No location'}
+                        </span>
                       </div>
                     </div>
 
                     {/* Status */}
                     <div className="col-span-2">
-                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(client.status)}`}>
-                        {client.status.charAt(0).toUpperCase() + client.status.slice(1)}
+                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(client.status || 'inactive')}`}>
+                        {(client.status || 'inactive').charAt(0).toUpperCase() + (client.status || 'inactive').slice(1)}
                       </span>
                     </div>
 
                     {/* Projects Count */}
                     <div className="col-span-1">
-                      <span className="text-white font-medium">{client.projectsCount}</span>
+                      <span className="text-white font-medium">{client.projects?.length || 0}</span>
                     </div>
 
                     {/* Total Value */}
                     <div className="col-span-2">
                       <div className="flex items-center justify-between">
                         <span className="text-emerald-400 font-medium">
-                          ${client.totalValue.toLocaleString()}
+                          ${(client.financialMetrics?.totalRevenue || 0).toLocaleString()}
                         </span>
                         <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                           <button className="p-2 text-slate-400 hover:text-white rounded-lg transition-colors">
