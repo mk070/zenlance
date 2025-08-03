@@ -82,7 +82,66 @@ const SocialMedia = () => {
     try {
       setLoading(true)
       
-      // Replace with actual API calls
+      // Load posts from API
+      const [postsResponse, analyticsResponse, accountsResponse] = await Promise.all([
+        apiClient.get('/api/social', {
+          params: {
+            page: pagination.page,
+            limit: pagination.limit,
+            status: filterStatus !== 'all' ? filterStatus : undefined,
+            platform: filterPlatform !== 'all' ? filterPlatform : undefined,
+            search: searchTerm || undefined
+          }
+        }),
+        apiClient.get('/api/social/analytics'),
+        apiClient.get('/api/social/accounts')
+      ])
+
+      if (postsResponse.data.success) {
+        const postsData = postsResponse.data.data.posts.map(post => ({
+          id: post._id,
+          content: post.content,
+          platforms: post.platforms,
+          status: post.status,
+          scheduledFor: post.scheduledDate,
+          publishedAt: post.publishedDate,
+          engagement: {
+            likes: post.performance?.likes || 0,
+            comments: post.performance?.comments || 0,
+            shares: post.performance?.shares || 0
+          }
+        }))
+        
+        setPosts(postsData)
+        setFilteredPosts(postsData)
+        setPagination(postsResponse.data.data.pagination)
+      }
+
+      if (analyticsResponse.data.success) {
+        setAnalytics({
+          totalPosts: analyticsResponse.data.data.totalPosts,
+          scheduledPosts: analyticsResponse.data.data.performanceStats.totalPosts || 0,
+          totalReach: analyticsResponse.data.data.performanceStats.totalViews || 0,
+          totalEngagement: analyticsResponse.data.data.performanceStats.totalLikes + 
+                          analyticsResponse.data.data.performanceStats.totalShares + 
+                          analyticsResponse.data.data.performanceStats.totalComments || 0
+        })
+      }
+
+      if (accountsResponse.data.success) {
+        const accounts = accountsResponse.data.data.accounts.map(account => ({
+          platform: account.platform,
+          name: account.username,
+          followers: '0', // This would come from the actual platform API
+          status: account.connected ? 'connected' : 'disconnected'
+        }))
+        setConnectedAccounts(accounts)
+      }
+
+    } catch (error) {
+      console.error('Error loading social media data:', error)
+      
+      // Fallback to sample data if API fails
       setConnectedAccounts(sampleAccounts)
       setPosts(samplePosts)
       setFilteredPosts(samplePosts)
@@ -100,8 +159,7 @@ const SocialMedia = () => {
         total: samplePosts.length,
         pages: Math.ceil(samplePosts.length / 20)
       })
-    } catch (error) {
-      console.error('Error loading social media data:', error)
+      
       toast.error('Failed to load social media data')
     } finally {
       setLoading(false)
@@ -118,48 +176,14 @@ const SocialMedia = () => {
 
   const handleSearch = (query) => {
     setSearchTerm(query)
-    const filtered = posts.filter(post =>
-      post.content.toLowerCase().includes(query.toLowerCase())
-    )
-    setFilteredPosts(filtered)
   }
 
   const handleStatusFilter = (status) => {
     setFilterStatus(status)
-    let filtered = posts
-    
-    if (status !== 'all') {
-      filtered = filtered.filter(post => post.status === status)
-    }
-    
-    if (searchTerm) {
-      filtered = filtered.filter(post =>
-        post.content.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    }
-    
-    setFilteredPosts(filtered)
   }
 
   const handlePlatformFilter = (platform) => {
     setFilterPlatform(platform)
-    let filtered = posts
-    
-    if (platform !== 'all') {
-      filtered = filtered.filter(post => post.platforms.includes(platform))
-    }
-    
-    if (filterStatus !== 'all') {
-      filtered = filtered.filter(post => post.status === filterStatus)
-    }
-    
-    if (searchTerm) {
-      filtered = filtered.filter(post =>
-        post.content.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    }
-    
-    setFilteredPosts(filtered)
   }
 
   const getStatusColor = (status) => {
@@ -210,6 +234,13 @@ const SocialMedia = () => {
   useEffect(() => {
     loadPosts()
   }, [])
+
+  // Reload posts when filters change
+  useEffect(() => {
+    if (!initialLoading) {
+      loadPosts()
+    }
+  }, [filterStatus, filterPlatform, searchTerm, pagination.page])
 
   if (initialLoading) {
     return (

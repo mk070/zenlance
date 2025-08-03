@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { 
@@ -12,15 +12,503 @@ import {
   X,
   Upload,
   Link,
-  Type
+  Type,
+  Heart,
+  MessageCircle,
+  Repeat2,
+  Share,
+  ThumbsUp,
+  MoreHorizontal,
+  Bookmark,
+  Sparkles,
+  Loader2,
+  Download
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import apiClient from '../lib/api-client'
+
+// Image processing utilities
+const createImagePreview = (file) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = (e) => resolve(e.target.result)
+    reader.readAsDataURL(file)
+  })
+}
+
+// AI Image Generation Service (Local Storage Implementation)
+// TODO: BACKEND INTEGRATION NEEDED
+// These functions should be moved to backend services:
+// 1. generateAIImage() - Call actual AI service (OpenAI DALL-E, Midjourney, Stable Diffusion)
+// 2. saveGeneratedImage() - Store images in cloud storage
+// 3. getGeneratedImageHistory() - Retrieve user's generated images
+const AIImageService = {
+  // Simulates AI image generation - REPLACE WITH BACKEND API CALL
+  generateImage: async (prompt, style = 'realistic') => {
+    // TODO: Replace with actual AI service call
+    // Example: const response = await openai.images.generate({ prompt, style })
+    
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 3000))
+    
+    // Generate placeholder images based on prompt
+    const imageUrls = [
+      `https://picsum.photos/800/600?random=${Date.now()}&text=${encodeURIComponent(prompt.substring(0, 20))}`,
+      `https://picsum.photos/800/600?random=${Date.now() + 1}&text=${encodeURIComponent(prompt.substring(0, 20))}`,
+      `https://picsum.photos/800/600?random=${Date.now() + 2}&text=${encodeURIComponent(prompt.substring(0, 20))}`,
+      `https://picsum.photos/800/600?random=${Date.now() + 3}&text=${encodeURIComponent(prompt.substring(0, 20))}`
+    ]
+    
+    return imageUrls
+  },
+
+  // Save generated image to local storage - MOVE TO BACKEND
+  saveToHistory: (prompt, imageUrl, style) => {
+    const history = JSON.parse(localStorage.getItem('aiGeneratedImages') || '[]')
+    const newEntry = {
+      id: Date.now(),
+      prompt,
+      imageUrl,
+      style,
+      timestamp: new Date().toISOString()
+    }
+    history.unshift(newEntry)
+    // Keep only last 50 generated images
+    const trimmedHistory = history.slice(0, 50)
+    localStorage.setItem('aiGeneratedImages', JSON.stringify(trimmedHistory))
+    return newEntry
+  },
+
+  // Get generation history - MOVE TO BACKEND
+  getHistory: () => {
+    return JSON.parse(localStorage.getItem('aiGeneratedImages') || '[]')
+  },
+
+  // Convert URL to File object for upload
+  urlToFile: async (url, filename) => {
+    const response = await fetch(url)
+    const blob = await response.blob()
+    return new File([blob], filename, { type: blob.type })
+  }
+}
+
+const ImagePreview = ({ file, aspectRatio = "square", className = "" }) => {
+  const [mediaSrc, setMediaSrc] = useState(null)
+  const [isVideo, setIsVideo] = useState(false)
+
+  useEffect(() => {
+    if (file) {
+      setIsVideo(file.type.startsWith('video/'))
+      createImagePreview(file).then(setMediaSrc)
+    }
+  }, [file])
+
+  if (!mediaSrc) {
+    return (
+      <div className={`bg-gray-100 flex items-center justify-center ${className}`}>
+        <Image className="w-8 h-8 text-gray-400" />
+      </div>
+    )
+  }
+
+  const aspectClasses = {
+    square: "aspect-square",
+    video: "aspect-video", // 16:9
+    portrait: "aspect-[4/5]", // Instagram portrait
+    story: "aspect-[9/16]" // Stories format
+  }
+
+  return (
+    <div className={`${aspectClasses[aspectRatio]} ${className} overflow-hidden bg-gray-100 relative`}>
+      {isVideo ? (
+        <>
+          <video 
+            src={mediaSrc} 
+            className="w-full h-full object-cover"
+            muted
+            playsInline
+          />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+            <div className="w-12 h-12 bg-black/60 rounded-full flex items-center justify-center">
+              <Play className="w-6 h-6 text-white ml-1" />
+            </div>
+          </div>
+        </>
+      ) : (
+        <img 
+          src={mediaSrc} 
+          alt="Preview" 
+          className="w-full h-full object-cover"
+        />
+      )}
+    </div>
+  )
+}
+
+// Platform-specific preview components
+const InstagramPreview = ({ content, hashtags, link, mediaFiles }) => (
+  <div className="bg-white rounded-lg overflow-hidden max-w-sm mx-auto shadow-lg">
+    {/* Header */}
+    <div className="flex items-center p-3 border-b border-gray-100">
+      <div className="w-8 h-8 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full flex items-center justify-center">
+        <span className="text-white text-xs font-bold">YB</span>
+      </div>
+      <div className="ml-3 flex-1">
+        <p className="text-sm font-semibold text-gray-900">yourbusiness</p>
+        <p className="text-xs text-gray-500">2 minutes ago</p>
+      </div>
+      <MoreHorizontal className="w-5 h-5 text-gray-400" />
+    </div>
+    
+    {/* Media */}
+    {mediaFiles.length > 0 ? (
+      <div className="relative">
+        {mediaFiles.length === 1 ? (
+          <ImagePreview file={mediaFiles[0]} aspectRatio="square" />
+        ) : (
+          <div className="grid grid-cols-2 gap-1">
+            {mediaFiles.slice(0, 4).map((file, index) => (
+              <div key={index} className="relative">
+                <ImagePreview file={file} aspectRatio="square" className="aspect-square" />
+                {index === 3 && mediaFiles.length > 4 && (
+                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                    <span className="text-white font-semibold">+{mediaFiles.length - 4}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    ) : (
+      <div className="aspect-square bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center">
+        <Image className="w-16 h-16 text-gray-400" />
+      </div>
+    )}
+    
+    {/* Action buttons */}
+    <div className="p-3">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center space-x-4">
+          <Heart className="w-6 h-6 text-gray-700" />
+          <MessageCircle className="w-6 h-6 text-gray-700" />
+          <Share className="w-6 h-6 text-gray-700" />
+        </div>
+        <Bookmark className="w-6 h-6 text-gray-700" />
+      </div>
+      
+      {/* Content */}
+      <div className="text-sm text-gray-900">
+        <span className="font-semibold">yourbusiness</span> {content}
+      </div>
+      
+      {/* Hashtags */}
+      {hashtags && (
+        <div className="text-sm text-blue-600 mt-1">
+          {hashtags}
+        </div>
+      )}
+      
+      {/* Link */}
+      {link && (
+        <div className="text-sm text-blue-600 mt-1 underline">
+          {link}
+        </div>
+      )}
+      
+      <p className="text-xs text-gray-500 mt-2">View all comments</p>
+    </div>
+  </div>
+)
+
+const TwitterPreview = ({ content, hashtags, link, mediaFiles }) => (
+  <div className="bg-white rounded-lg border border-gray-200 max-w-lg mx-auto p-4">
+    <div className="flex space-x-3">
+      <div className="w-12 h-12 bg-gradient-to-r from-blue-400 to-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+        <span className="text-white text-sm font-bold">YB</span>
+      </div>
+      
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center space-x-2 mb-1">
+          <p className="text-sm font-bold text-gray-900">Your Business</p>
+          <p className="text-sm text-gray-500">@yourbusiness</p>
+          <span className="text-gray-500">·</span>
+          <p className="text-sm text-gray-500">2m</p>
+        </div>
+        
+        <div className="text-sm text-gray-900 mb-3">
+          {content} {hashtags && <span className="text-blue-500">{hashtags}</span>}
+        </div>
+        
+        {/* Media */}
+        {mediaFiles.length > 0 && (
+          <div className="mb-3 rounded-lg overflow-hidden border border-gray-200">
+            {mediaFiles.length === 1 ? (
+              <ImagePreview file={mediaFiles[0]} aspectRatio="video" />
+            ) : mediaFiles.length === 2 ? (
+              <div className="grid grid-cols-2 gap-1">
+                {mediaFiles.slice(0, 2).map((file, index) => (
+                  <ImagePreview key={index} file={file} aspectRatio="square" />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <ImagePreview file={mediaFiles[0]} aspectRatio="video" />
+                <div className="grid grid-cols-2 gap-1">
+                  {mediaFiles.slice(1, 3).map((file, index) => (
+                    <div key={index} className="relative">
+                      <ImagePreview file={file} aspectRatio="video" className="aspect-video" />
+                      {index === 1 && mediaFiles.length > 3 && (
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                          <span className="text-white font-semibold">+{mediaFiles.length - 3}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Link preview */}
+        {link && (
+          <div className="border border-gray-200 rounded-lg p-3 mb-3">
+            <p className="text-sm text-blue-500 truncate">{link}</p>
+          </div>
+        )}
+        
+        {/* Action buttons */}
+        <div className="flex items-center justify-between max-w-md text-gray-500">
+          <div className="flex items-center space-x-2 hover:text-blue-500 cursor-pointer">
+            <MessageCircle className="w-5 h-5" />
+            <span className="text-sm">12</span>
+          </div>
+          <div className="flex items-center space-x-2 hover:text-green-500 cursor-pointer">
+            <Repeat2 className="w-5 h-5" />
+            <span className="text-sm">5</span>
+          </div>
+          <div className="flex items-center space-x-2 hover:text-red-500 cursor-pointer">
+            <Heart className="w-5 h-5" />
+            <span className="text-sm">23</span>
+          </div>
+          <div className="flex items-center space-x-2 hover:text-blue-500 cursor-pointer">
+            <Share className="w-5 h-5" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+)
+
+const LinkedInPreview = ({ content, hashtags, link, mediaFiles }) => (
+  <div className="bg-white rounded-lg border border-gray-200 max-w-lg mx-auto overflow-hidden">
+    {/* Header */}
+    <div className="p-4 border-b border-gray-100">
+      <div className="flex items-center space-x-3">
+        <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-blue-700 rounded-full flex items-center justify-center">
+          <span className="text-white text-sm font-bold">YB</span>
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-gray-900">Your Business</p>
+          <p className="text-xs text-gray-500">Company • 2nd • 2m</p>
+        </div>
+        <MoreHorizontal className="w-5 h-5 text-gray-400" />
+      </div>
+    </div>
+    
+    {/* Content */}
+    <div className="p-4">
+      <div className="text-sm text-gray-900 mb-3">
+        {content}
+      </div>
+      
+      {hashtags && (
+        <div className="text-sm text-blue-600 mb-3">
+          {hashtags}
+        </div>
+      )}
+      
+      {/* Media */}
+      {mediaFiles.length > 0 && (
+        <div className="mb-3 rounded-lg overflow-hidden">
+          {mediaFiles.length === 1 ? (
+            <ImagePreview file={mediaFiles[0]} aspectRatio="video" />
+          ) : (
+            <div className="grid grid-cols-2 gap-1">
+              {mediaFiles.slice(0, 4).map((file, index) => (
+                <div key={index} className="relative">
+                  <ImagePreview file={file} aspectRatio="square" className="aspect-square" />
+                  {index === 3 && mediaFiles.length > 4 && (
+                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                      <span className="text-white font-semibold">+{mediaFiles.length - 4}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Link preview */}
+      {link && (
+        <div className="border border-gray-200 rounded-lg overflow-hidden mb-3">
+          <div className="bg-gray-50 h-32 flex items-center justify-center">
+            <Link className="w-8 h-8 text-gray-400" />
+          </div>
+          <div className="p-3">
+            <p className="text-sm font-medium text-gray-900 truncate">Link Preview</p>
+            <p className="text-xs text-gray-500 truncate">{link}</p>
+          </div>
+        </div>
+      )}
+    </div>
+    
+    {/* Action buttons */}
+    <div className="border-t border-gray-100 px-4 py-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2 text-gray-600 hover:text-blue-600 cursor-pointer">
+          <ThumbsUp className="w-5 h-5" />
+          <span className="text-sm">Like</span>
+        </div>
+        <div className="flex items-center space-x-2 text-gray-600 hover:text-blue-600 cursor-pointer">
+          <MessageCircle className="w-5 h-5" />
+          <span className="text-sm">Comment</span>
+        </div>
+        <div className="flex items-center space-x-2 text-gray-600 hover:text-blue-600 cursor-pointer">
+          <Repeat2 className="w-5 h-5" />
+          <span className="text-sm">Repost</span>
+        </div>
+        <div className="flex items-center space-x-2 text-gray-600 hover:text-blue-600 cursor-pointer">
+          <Share className="w-5 h-5" />
+          <span className="text-sm">Send</span>
+        </div>
+      </div>
+    </div>
+  </div>
+)
+
+const FacebookPreview = ({ content, hashtags, link, mediaFiles }) => (
+  <div className="bg-white rounded-lg border border-gray-200 max-w-lg mx-auto overflow-hidden">
+    {/* Header */}
+    <div className="p-4">
+      <div className="flex items-center space-x-3 mb-3">
+        <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
+          <span className="text-white text-sm font-bold">YB</span>
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-gray-900">Your Business</p>
+          <div className="flex items-center space-x-1 text-xs text-gray-500">
+            <span>2 minutes ago</span>
+            <span>•</span>
+            <span>🌍</span>
+          </div>
+        </div>
+        <MoreHorizontal className="w-5 h-5 text-gray-400" />
+      </div>
+      
+      {/* Content */}
+      <div className="text-sm text-gray-900 mb-3">
+        {content}
+      </div>
+      
+      {hashtags && (
+        <div className="text-sm text-blue-600 mb-3">
+          {hashtags}
+        </div>
+      )}
+    </div>
+    
+    {/* Media */}
+    {mediaFiles.length > 0 && (
+      <div className="overflow-hidden">
+        {mediaFiles.length === 1 ? (
+          <ImagePreview file={mediaFiles[0]} aspectRatio="video" />
+        ) : mediaFiles.length === 2 ? (
+          <div className="grid grid-cols-2">
+            {mediaFiles.slice(0, 2).map((file, index) => (
+              <ImagePreview key={index} file={file} aspectRatio="square" />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-0">
+            <ImagePreview file={mediaFiles[0]} aspectRatio="video" />
+            <div className="grid grid-cols-2">
+              {mediaFiles.slice(1, 3).map((file, index) => (
+                <div key={index} className="relative">
+                  <ImagePreview file={file} aspectRatio="square" className="aspect-square" />
+                  {index === 1 && mediaFiles.length > 3 && (
+                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                      <span className="text-white font-semibold text-lg">+{mediaFiles.length - 3}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+    
+    {/* Link preview */}
+    {link && (
+      <div className="border-t border-gray-200">
+        <div className="bg-gray-50 h-32 flex items-center justify-center">
+          <Link className="w-8 h-8 text-gray-400" />
+        </div>
+        <div className="p-3 border-b border-gray-200">
+          <p className="text-sm font-medium text-gray-900 truncate">Link Preview</p>
+          <p className="text-xs text-gray-500 truncate">{link}</p>
+        </div>
+      </div>
+    )}
+    
+    {/* Reactions and stats */}
+    <div className="px-4 py-2 border-b border-gray-100">
+      <div className="flex items-center justify-between text-sm text-gray-500">
+        <div className="flex items-center space-x-1">
+          <div className="flex -space-x-1">
+            <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs">👍</div>
+            <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs">❤️</div>
+          </div>
+          <span>15</span>
+        </div>
+        <div className="flex items-center space-x-4">
+          <span>3 comments</span>
+          <span>2 shares</span>
+        </div>
+      </div>
+    </div>
+    
+    {/* Action buttons */}
+    <div className="px-4 py-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2 text-gray-600 hover:text-blue-600 cursor-pointer">
+          <ThumbsUp className="w-5 h-5" />
+          <span className="text-sm">Like</span>
+        </div>
+        <div className="flex items-center space-x-2 text-gray-600 hover:text-blue-600 cursor-pointer">
+          <MessageCircle className="w-5 h-5" />
+          <span className="text-sm">Comment</span>
+        </div>
+        <div className="flex items-center space-x-2 text-gray-600 hover:text-blue-600 cursor-pointer">
+          <Share className="w-5 h-5" />
+          <span className="text-sm">Share</span>
+        </div>
+      </div>
+    </div>
+  </div>
+)
 
 const CreateSocialPost = () => {
   const navigate = useNavigate()
   const [loading, setSaving] = useState(false)
   const [previewMode, setPreviewMode] = useState(false)
+  const [validationErrors, setValidationErrors] = useState({})
+  const [aiGenerationModal, setAiGenerationModal] = useState(false)
+  const [aiGenerating, setAiGenerating] = useState(false)
+  const [aiGeneratedImages, setAiGeneratedImages] = useState([])
   
   const [formData, setFormData] = useState({
     content: '',
@@ -39,11 +527,50 @@ const CreateSocialPost = () => {
     { id: 'linkedin', name: 'LinkedIn', color: 'from-blue-600 to-blue-700' }
   ]
 
+  // Validation function
+  const validateForm = () => {
+    const errors = {}
+    
+    if (!formData.content.trim()) {
+      errors.content = 'Post content is required'
+    } else if (formData.content.length > 280) {
+      errors.content = 'Content must be 280 characters or less'
+    }
+    
+    if (formData.platforms.length === 0) {
+      errors.platforms = 'Please select at least one platform'
+    }
+    
+    if (formData.link && !isValidUrl(formData.link)) {
+      errors.link = 'Please enter a valid URL'
+    }
+    
+    setValidationErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const isValidUrl = (string) => {
+    try {
+      new URL(string)
+      return true
+    } catch (_) {
+      return false
+    }
+  }
+
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }))
+    
+    // Clear validation error when user starts typing
+    if (validationErrors[field]) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [field]: undefined
+      }))
+    }
   }
 
   const handlePlatformToggle = (platformId) => {
@@ -53,6 +580,14 @@ const CreateSocialPost = () => {
         ? prev.platforms.filter(id => id !== platformId)
         : [...prev.platforms, platformId]
     }))
+    
+    // Clear platforms validation error
+    if (validationErrors.platforms) {
+      setValidationErrors(prev => ({
+        ...prev,
+        platforms: undefined
+      }))
+    }
   }
 
   const handleFileUpload = (event) => {
@@ -70,49 +605,148 @@ const CreateSocialPost = () => {
     }))
   }
 
+  // AI Image Generation Functions
+  const handleAIGeneration = () => {
+    if (!formData.content.trim()) {
+      toast.error('Please enter some content first to generate relevant images')
+      return
+    }
+    setAiGenerationModal(true)
+  }
+
+  const generateAIImages = async (style = 'realistic') => {
+    try {
+      setAiGenerating(true)
+      
+      // Create a prompt from the post content
+      const prompt = formData.content.trim()
+      
+      // Generate images using AI service
+      const imageUrls = await AIImageService.generateImage(prompt, style)
+      
+      // Save to history
+      imageUrls.forEach(url => {
+        AIImageService.saveToHistory(prompt, url, style)
+      })
+      
+      setAiGeneratedImages(imageUrls)
+      toast.success(`Generated ${imageUrls.length} images based on your content!`)
+      
+    } catch (error) {
+      console.error('AI Generation Error:', error)
+      toast.error('Failed to generate images. Please try again.')
+    } finally {
+      setAiGenerating(false)
+    }
+  }
+
+  const addAIImageToPost = async (imageUrl) => {
+    try {
+      // Convert URL to File object
+      const filename = `ai-generated-${Date.now()}.jpg`
+      const file = await AIImageService.urlToFile(imageUrl, filename)
+      
+      // Add to form data
+      setFormData(prev => ({
+        ...prev,
+        mediaFiles: [...prev.mediaFiles, file]
+      }))
+      
+      toast.success('AI generated image added to your post!')
+      setAiGenerationModal(false)
+      setAiGeneratedImages([])
+      
+    } catch (error) {
+      console.error('Error adding AI image:', error)
+      toast.error('Failed to add image. Please try again.')
+    }
+  }
+
+  const loadAIHistory = () => {
+    return AIImageService.getHistory()
+  }
+
   const handleSave = async (isDraft = true) => {
     try {
       setSaving(true)
       
-      // Validation
-      if (!formData.content.trim()) {
-        toast.error('Please enter post content')
-        return
-      }
-      
-      if (formData.platforms.length === 0) {
-        toast.error('Please select at least one platform')
+      // Validate form
+      if (!validateForm()) {
+        toast.error('Please fix the errors before saving')
         return
       }
 
+      // Prepare data for API
       const postData = {
-        ...formData,
-        status: isDraft ? 'draft' : 'scheduled',
-        scheduledFor: formData.scheduleDate && formData.scheduleTime 
-          ? new Date(`${formData.scheduleDate}T${formData.scheduleTime}`)
-          : null
+        content: formData.content.trim(),
+        platforms: formData.platforms,
+        hashtags: formData.hashtags ? formData.hashtags.split(' ').filter(tag => tag.trim()) : [],
+        link: formData.link || undefined,
+        status: isDraft ? 'draft' : 'scheduled'
       }
 
-      // Replace with actual API call
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // Add scheduling if provided
+      if (formData.scheduleDate && formData.scheduleTime && !isDraft) {
+        postData.scheduledDate = new Date(`${formData.scheduleDate}T${formData.scheduleTime}`)
+      }
+
+      // Call API
+      const response = await apiClient.post('/api/social', postData)
       
-      toast.success(isDraft ? 'Post saved as draft!' : 'Post scheduled successfully!')
-      navigate('/social-media')
+      if (response.data.success) {
+        toast.success(isDraft ? 'Post saved as draft!' : 'Post scheduled successfully!')
+        navigate('/social-media')
+      } else {
+        throw new Error(response.data.message || 'Failed to save post')
+      }
       
     } catch (error) {
       console.error('Error saving post:', error)
-      toast.error(isDraft ? 'Failed to save post' : 'Failed to schedule post')
+      
+      if (error.response?.data?.errors) {
+        // Handle validation errors from backend
+        const backendErrors = {}
+        error.response.data.errors.forEach(err => {
+          backendErrors[err.field] = err.message
+        })
+        setValidationErrors(backendErrors)
+        toast.error('Please fix the validation errors')
+      } else {
+        toast.error(error.response?.data?.message || (isDraft ? 'Failed to save post' : 'Failed to schedule post'))
+      }
     } finally {
       setSaving(false)
     }
   }
 
   const handlePreview = () => {
-    if (!formData.content.trim()) {
-      toast.error('Please enter some content to preview')
+    if (!validateForm()) {
+      toast.error('Please fix the errors before previewing')
       return
     }
     setPreviewMode(true)
+  }
+
+  const renderPlatformPreview = (platform) => {
+    const previewProps = {
+      content: formData.content,
+      hashtags: formData.hashtags,
+      link: formData.link,
+      mediaFiles: formData.mediaFiles
+    }
+
+    switch (platform) {
+      case 'instagram':
+        return <InstagramPreview key={platform} {...previewProps} />
+      case 'twitter':
+        return <TwitterPreview key={platform} {...previewProps} />
+      case 'linkedin':
+        return <LinkedInPreview key={platform} {...previewProps} />
+      case 'facebook':
+        return <FacebookPreview key={platform} {...previewProps} />
+      default:
+        return null
+    }
   }
 
   return (
@@ -189,11 +823,21 @@ const CreateSocialPost = () => {
               value={formData.content}
               onChange={(e) => handleInputChange('content', e.target.value)}
               placeholder="What's on your mind? Share your thoughts, insights, or updates with your audience..."
-              className="w-full h-32 bg-white/5 border border-white/10 rounded-xl p-4 text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400/50 focus:bg-white/10 transition-all resize-none"
+              className={`w-full h-32 bg-white/5 border rounded-xl p-4 text-white placeholder-slate-400 focus:outline-none focus:bg-white/10 transition-all resize-none ${
+                validationErrors.content 
+                  ? 'border-red-400/50 focus:border-red-400' 
+                  : 'border-white/10 focus:border-cyan-400/50'
+              }`}
             />
             
+            {validationErrors.content && (
+              <p className="text-red-400 text-sm mt-2">{validationErrors.content}</p>
+            )}
+            
             <div className="mt-3 text-right">
-              <span className="text-slate-400 text-sm">
+              <span className={`text-sm ${
+                formData.content.length > 280 ? 'text-red-400' : 'text-slate-400'
+              }`}>
                 {formData.content.length}/280 characters
               </span>
             </div>
@@ -212,24 +856,39 @@ const CreateSocialPost = () => {
             </div>
             
             <div className="space-y-4">
-              {/* Upload Area */}
-              <div className="border-2 border-dashed border-white/20 rounded-xl p-6 text-center hover:border-cyan-400/50 transition-colors">
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*,video/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  id="media-upload"
-                />
-                <label
-                  htmlFor="media-upload"
-                  className="cursor-pointer flex flex-col items-center space-y-2"
+              {/* Upload Options */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Traditional Upload */}
+                <div className="border-2 border-dashed border-white/20 rounded-xl p-6 text-center hover:border-cyan-400/50 transition-colors">
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*,video/*"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="media-upload"
+                  />
+                  <label
+                    htmlFor="media-upload"
+                    className="cursor-pointer flex flex-col items-center space-y-2"
+                  >
+                    <Upload className="w-8 h-8 text-slate-400" />
+                    <p className="text-white font-medium">Upload Files</p>
+                    <p className="text-slate-400 text-sm">Images or Videos</p>
+                  </label>
+                </div>
+
+                {/* AI Generation */}
+                <div 
+                  onClick={handleAIGeneration}
+                  className="border-2 border-dashed border-purple-400/20 rounded-xl p-6 text-center hover:border-purple-400/50 transition-colors cursor-pointer bg-purple-500/5"
                 >
-                  <Upload className="w-8 h-8 text-slate-400" />
-                  <p className="text-white font-medium">Upload Images or Videos</p>
-                  <p className="text-slate-400 text-sm">Drag and drop or click to browse</p>
-                </label>
+                  <div className="flex flex-col items-center space-y-2">
+                    <Sparkles className="w-8 h-8 text-purple-400" />
+                    <p className="text-white font-medium">Generate with AI</p>
+                    <p className="text-slate-400 text-sm">Based on your content</p>
+                  </div>
+                </div>
               </div>
 
               {/* Uploaded Files */}
@@ -290,8 +949,15 @@ const CreateSocialPost = () => {
                   value={formData.link}
                   onChange={(e) => handleInputChange('link', e.target.value)}
                   placeholder="https://example.com"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400/50 focus:bg-white/10 transition-all"
+                  className={`w-full bg-white/5 border rounded-xl px-4 py-3 text-white placeholder-slate-400 focus:outline-none focus:bg-white/10 transition-all ${
+                    validationErrors.link 
+                      ? 'border-red-400/50 focus:border-red-400' 
+                      : 'border-white/10 focus:border-cyan-400/50'
+                  }`}
                 />
+                {validationErrors.link && (
+                  <p className="text-red-400 text-sm mt-2">{validationErrors.link}</p>
+                )}
               </div>
             </div>
           </motion.div>
@@ -331,6 +997,10 @@ const CreateSocialPost = () => {
                 </label>
               ))}
             </div>
+            
+            {validationErrors.platforms && (
+              <p className="text-red-400 text-sm mt-2">{validationErrors.platforms}</p>
+            )}
           </motion.div>
 
           {/* Schedule */}
@@ -370,6 +1040,131 @@ const CreateSocialPost = () => {
         </div>
       </div>
 
+      {/* AI Image Generation Modal */}
+      {aiGenerationModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
+            className="bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center space-x-3">
+                <Sparkles className="w-6 h-6 text-purple-400" />
+                <h3 className="text-2xl font-light text-white">Generate AI Images</h3>
+              </div>
+              <button
+                onClick={() => {
+                  setAiGenerationModal(false)
+                  setAiGeneratedImages([])
+                }}
+                className="p-2 text-slate-400 hover:text-white rounded-lg transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Content Preview */}
+            <div className="mb-6 p-4 bg-white/5 rounded-xl border border-white/10">
+              <h4 className="text-white font-medium mb-2">Your Post Content:</h4>
+              <p className="text-slate-300 italic">"{formData.content}"</p>
+            </div>
+
+            {/* Generation Options */}
+            <div className="mb-6">
+              <h4 className="text-white font-medium mb-4">Style Options:</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { id: 'realistic', name: 'Realistic', desc: 'Photo-realistic images' },
+                  { id: 'artistic', name: 'Artistic', desc: 'Creative and artistic' },
+                  { id: 'minimal', name: 'Minimal', desc: 'Clean and simple' },
+                  { id: 'vibrant', name: 'Vibrant', desc: 'Bright and colorful' }
+                ].map((style) => (
+                  <button
+                    key={style.id}
+                    onClick={() => generateAIImages(style.id)}
+                    disabled={aiGenerating}
+                    className="p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-left transition-colors disabled:opacity-50"
+                  >
+                    <div className="text-white font-medium">{style.name}</div>
+                    <div className="text-slate-400 text-sm">{style.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Loading State */}
+            {aiGenerating && (
+              <div className="text-center py-8">
+                <Loader2 className="w-8 h-8 text-purple-400 animate-spin mx-auto mb-4" />
+                <p className="text-white">Generating images based on your content...</p>
+                <p className="text-slate-400 text-sm">This may take a few seconds</p>
+              </div>
+            )}
+
+            {/* Generated Images */}
+            {aiGeneratedImages.length > 0 && (
+              <div className="mb-6">
+                <h4 className="text-white font-medium mb-4">Generated Images:</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {aiGeneratedImages.map((imageUrl, index) => (
+                    <div key={index} className="relative group">
+                      <img
+                        src={imageUrl}
+                        alt={`Generated ${index + 1}`}
+                        className="w-full aspect-square object-cover rounded-lg border border-white/10"
+                      />
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                        <button
+                          onClick={() => addAIImageToPost(imageUrl)}
+                          className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+                        >
+                          <Download className="w-4 h-4" />
+                          <span>Use This</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Recent History */}
+            <div className="border-t border-white/10 pt-6">
+              <h4 className="text-white font-medium mb-4">Recent Generations:</h4>
+              <div className="grid grid-cols-3 md:grid-cols-6 gap-3 max-h-32 overflow-y-auto">
+                {loadAIHistory().slice(0, 12).map((item) => (
+                  <div key={item.id} className="relative group">
+                    <img
+                      src={item.imageUrl}
+                      alt={item.prompt}
+                      className="w-full aspect-square object-cover rounded-lg border border-white/10 cursor-pointer"
+                      onClick={() => addAIImageToPost(item.imageUrl)}
+                    />
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                      <Download className="w-4 h-4 text-white" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={() => {
+                  setAiGenerationModal(false)
+                  setAiGeneratedImages([])
+                }}
+                className="bg-slate-600 hover:bg-slate-700 text-white px-6 py-2 rounded-xl transition-colors font-medium"
+              >
+                Close
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {/* Preview Modal */}
       {previewMode && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -377,28 +1172,52 @@ const CreateSocialPost = () => {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.3 }}
-            className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6 max-w-md w-full"
+            className="bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto"
           >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-light text-white">Post Preview</h3>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-light text-white">Platform Previews</h3>
               <button
                 onClick={() => setPreviewMode(false)}
                 className="p-2 text-slate-400 hover:text-white rounded-lg transition-colors"
               >
-                <X className="w-5 h-5" />
+                <X className="w-6 h-6" />
               </button>
             </div>
             
-            <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-              <p className="text-white whitespace-pre-wrap">{formData.content}</p>
-              {formData.hashtags && (
-                <p className="text-cyan-400 mt-2">{formData.hashtags}</p>
-              )}
-              {formData.link && (
-                <a href={formData.link} className="text-blue-400 mt-2 block underline">
-                  {formData.link}
-                </a>
-              )}
+            {formData.platforms.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-slate-400">Please select at least one platform to see previews</p>
+              </div>
+            ) : (
+              <div className="space-y-8">
+                {formData.platforms.map((platform) => {
+                  const platformName = platforms.find(p => p.id === platform)?.name || platform
+                  return (
+                    <div key={platform}>
+                      <h4 className="text-lg font-medium text-white mb-4 flex items-center space-x-2">
+                        <div className={`w-6 h-6 rounded bg-gradient-to-r ${platforms.find(p => p.id === platform)?.color} flex items-center justify-center`}>
+                          <span className="text-white text-xs font-bold">
+                            {platformName.substring(0, 1).toUpperCase()}
+                          </span>
+                        </div>
+                        <span>{platformName} Preview</span>
+                      </h4>
+                      <div className="flex justify-center">
+                        {renderPlatformPreview(platform)}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            
+            <div className="mt-8 flex justify-center">
+              <button
+                onClick={() => setPreviewMode(false)}
+                className="bg-cyan-400 hover:bg-cyan-500 text-black px-6 py-2 rounded-xl transition-colors font-medium"
+              >
+                Close Preview
+              </button>
             </div>
           </motion.div>
         </div>
