@@ -2,10 +2,14 @@ import express from 'express';
 import { body, validationResult, query } from 'express-validator';
 import SocialPost from '../models/SocialPost.js';
 import { catchAsync, AppError, handleValidationError } from '../middleware/errorMiddleware.js';
+import { authenticate } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// Get all social posts (removed authentication for now)
+// Apply authentication to all social routes
+router.use(authenticate);
+
+// Get all social posts for authenticated user
 router.get('/', catchAsync(async (req, res) => {
 
   const {
@@ -20,8 +24,9 @@ router.get('/', catchAsync(async (req, res) => {
     sortOrder = 'desc'
   } = req.query;
 
-  // Build query - simplified without user authentication
+  // Build query - filter by user
   const query = { 
+    user: req.user._id,
     isActive: true
   };
 
@@ -74,18 +79,24 @@ router.get('/', catchAsync(async (req, res) => {
   });
 }));
 
-// Get social media analytics
+// Get social media analytics for authenticated user
 router.get('/analytics', catchAsync(async (req, res) => {
   const { dateRange = 30 } = req.query;
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - parseInt(dateRange));
+  const userId = req.user._id;
 
-  const totalPosts = await SocialPost.countDocuments({ isActive: true });
+  const totalPosts = await SocialPost.countDocuments({ 
+    user: userId, 
+    isActive: true 
+  });
   const scheduledPosts = await SocialPost.countDocuments({ 
+    user: userId,
     status: 'scheduled', 
     isActive: true 
   });
   const publishedPosts = await SocialPost.countDocuments({ 
+    user: userId,
     status: 'published', 
     isActive: true,
     publishedDate: { $gte: startDate }
@@ -95,6 +106,7 @@ router.get('/analytics', catchAsync(async (req, res) => {
   const performanceAgg = await SocialPost.aggregate([
     {
       $match: {
+        user: userId,
         status: 'published',
         isActive: true,
         publishedDate: { $gte: startDate }
@@ -186,10 +198,11 @@ router.get('/accounts', catchAsync(async (req, res) => {
   });
 }));
 
-// Get single social post
+// Get single social post for authenticated user
 router.get('/:id', catchAsync(async (req, res) => {
   const post = await SocialPost.findOne({
     _id: req.params.id,
+    user: req.user._id,
     isActive: true
   });
 
@@ -228,7 +241,8 @@ router.post('/', catchAsync(async (req, res) => {
     link: req.body.link || '',
     status: req.body.status || 'draft',
     targetAudience: req.body.targetAudience || '',
-    category: req.body.category || ''
+    category: req.body.category || '',
+    user: req.user._id // Add user reference
   };
 
   // Handle media files
@@ -276,11 +290,12 @@ router.post('/', catchAsync(async (req, res) => {
   }
 }));
 
-// Update social post
+// Update social post for authenticated user
 router.put('/:id', catchAsync(async (req, res) => {
 
   const post = await SocialPost.findOne({
     _id: req.params.id,
+    user: req.user._id,
     isActive: true
   });
 
@@ -323,10 +338,11 @@ router.put('/:id', catchAsync(async (req, res) => {
   });
 }));
 
-// Delete social post (soft delete)
+// Delete social post (soft delete) for authenticated user
 router.delete('/:id', catchAsync(async (req, res) => {
   const post = await SocialPost.findOne({
     _id: req.params.id,
+    user: req.user._id,
     isActive: true
   });
 
@@ -343,11 +359,12 @@ router.delete('/:id', catchAsync(async (req, res) => {
   });
 }));
 
-// Update post performance metrics
+// Update post performance metrics for authenticated user
 router.put('/:id/performance', catchAsync(async (req, res) => {
 
   const post = await SocialPost.findOne({
     _id: req.params.id,
+    user: req.user._id,
     isActive: true
   });
 
@@ -371,10 +388,11 @@ router.put('/:id/performance', catchAsync(async (req, res) => {
   });
 }));
 
-// Manually publish a scheduled post
+// Manually publish a scheduled post for authenticated user
 router.post('/:id/publish', catchAsync(async (req, res) => {
   const post = await SocialPost.findOne({
     _id: req.params.id,
+    user: req.user._id,
     status: 'scheduled',
     isActive: true
   });
@@ -394,9 +412,10 @@ router.post('/:id/publish', catchAsync(async (req, res) => {
   });
 }));
 
-// Get scheduled posts that need publishing
+// Get scheduled posts that need publishing for authenticated user
 router.get('/scheduled', catchAsync(async (req, res) => {
   const scheduledPosts = await SocialPost.find({
+    user: req.user._id,
     status: 'scheduled',
     scheduledDate: { $lte: new Date() },
     isActive: true

@@ -135,6 +135,13 @@ const socialPostSchema = new mongoose.Schema({
     default: () => ({})
   },
 
+  // User reference
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: [true, 'User reference is required']
+  },
+
   // Status tracking
   isActive: {
     type: Boolean,
@@ -147,12 +154,12 @@ const socialPostSchema = new mongoose.Schema({
 });
 
 // Indexes for better query performance
-socialPostSchema.index({ createdAt: -1 });
-socialPostSchema.index({ status: 1 });
-socialPostSchema.index({ platforms: 1 });
-socialPostSchema.index({ scheduledDate: 1 });
-socialPostSchema.index({ publishedDate: -1 });
-socialPostSchema.index({ isActive: 1 });
+socialPostSchema.index({ user: 1, createdAt: -1 });
+socialPostSchema.index({ user: 1, status: 1 });
+socialPostSchema.index({ user: 1, platforms: 1 });
+socialPostSchema.index({ user: 1, scheduledDate: 1 });
+socialPostSchema.index({ user: 1, publishedDate: -1 });
+socialPostSchema.index({ user: 1, isActive: 1 });
 
 // Text search index for content
 socialPostSchema.index({ 
