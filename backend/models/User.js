@@ -3,6 +3,19 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
 const userSchema = new mongoose.Schema({
+  firstName: {
+    type: String,
+    required: [true, 'First name is required'],
+    trim: true,
+    minlength: [2, 'First name must be at least 2 characters long'],
+    maxlength: [50, 'First name cannot exceed 50 characters']
+  },
+  lastName: {
+    type: String,
+    trim: true,
+    maxlength: [50, 'Last name cannot exceed 50 characters'],
+    default: ''
+  },
   email: {
     type: String,
     required: [true, 'Email is required'],
@@ -277,6 +290,20 @@ userSchema.methods.removeRefreshToken = function(token) {
 // Method to clear all refresh tokens
 userSchema.methods.clearRefreshTokens = function() {
   this.refreshTokens = [];
+  return this.save();
+};
+
+// Method to replace refresh token
+userSchema.methods.replaceRefreshToken = function(oldToken, newToken) {
+  // Remove old token and add new token
+  this.refreshTokens = this.refreshTokens.filter(rt => rt.token !== oldToken);
+  this.refreshTokens.push({ token: newToken });
+  
+  // Keep only the last 5 refresh tokens
+  if (this.refreshTokens.length > 5) {
+    this.refreshTokens = this.refreshTokens.slice(-5);
+  }
+  
   return this.save();
 };
 

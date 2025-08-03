@@ -242,8 +242,7 @@ const quoteSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-// Indexes for performance
-quoteSchema.index({ quoteNumber: 1 });
+// Performance indexes (removing duplicate quoteNumber index since unique: true already creates one)
 quoteSchema.index({ clientId: 1, status: 1 });
 quoteSchema.index({ createdBy: 1, status: 1 });
 quoteSchema.index({ validUntil: 1, status: 1 });

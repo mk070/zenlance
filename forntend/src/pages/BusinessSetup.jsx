@@ -27,9 +27,9 @@ const BusinessSetup = () => {
   const navigate = useNavigate()
 
   const businessTypes = [
-    { value: 'solo_freelancer', label: 'Solo Freelancer', icon: '👤' },
+    { value: 'freelancer', label: 'Solo Freelancer', icon: '👤' },
     { value: 'agency', label: 'Agency', icon: '🏢' },
-    { value: 'consultant', label: 'Consultant', icon: '💼' },
+    { value: 'other', label: 'Consultant', icon: '💼' },
     { value: 'startup', label: 'Startup', icon: '🚀' },
     { value: 'enterprise', label: 'Enterprise', icon: '🏗️' }
   ]
@@ -43,20 +43,24 @@ const BusinessSetup = () => {
   ]
 
   const teamSizes = [
-    { value: 'just_me', label: 'Just me' },
+    { value: '1', label: 'Just me' },
     { value: '2-5', label: '2-5 people' },
-    { value: '6-10', label: '6-10 people' },
-    { value: '11-50', label: '11-50 people' },
-    { value: '50+', label: '50+ people' }
+    { value: '6-10', label: '6-10 people' },  
+    { value: '11-25', label: '11-25 people' },
+    { value: '26-50', label: '26-50 people' },
+    { value: '51-100', label: '51-100 people' },
+    { value: '101-500', label: '101-500 people' },
+    { value: '500+', label: '500+ people' }
   ]
 
   const goals = [
-    { value: 'organize_projects', label: 'Organize my projects better', icon: '📋' },
-    { value: 'track_time', label: 'Track time more effectively', icon: '⏱️' },
-    { value: 'manage_clients', label: 'Manage client relationships', icon: '🤝' },
-    { value: 'create_invoices', label: 'Create professional invoices', icon: '📄' },
-    { value: 'grow_business', label: 'Scale and grow my business', icon: '📈' },
-    { value: 'analytics', label: 'Get business insights', icon: '📊' }
+    { value: 'improve_efficiency', label: 'Organize my projects better', icon: '📋' },
+    { value: 'reduce_costs', label: 'Track time more effectively', icon: '⏱️' },
+    { value: 'enhance_customer_experience', label: 'Manage client relationships', icon: '🤝' },
+    { value: 'increase_sales', label: 'Create professional invoices', icon: '📄' },
+    { value: 'expand_market', label: 'Scale and grow my business', icon: '📈' },
+    { value: 'digital_transformation', label: 'Get business insights', icon: '📊' },
+    { value: 'other', label: 'Other goals', icon: '🎯' }
   ]
 
   const experienceLevels = [
@@ -109,28 +113,46 @@ const BusinessSetup = () => {
     setLoading(true)
     
     try {
-      const result = await updateUserProfile({
+      const profileData = {
         businessName: formData.businessName.trim(),
-        businessType: formData.businessType || null,
-        industry: formData.industry || null,
-        location: {
-          country: formData.location.trim() || null
-        },
-        teamSize: formData.teamSize || null,
-        primaryGoal: formData.primaryGoal || null,
-        experienceLevel: formData.experienceLevel || null,
-        monthlyRevenue: formData.monthlyRevenue || null,
-        currentTools: formData.currentTools.length > 0 ? formData.currentTools : null,
         onboardingCompleted: true
-      })
+      }
+      
+      // Only add fields that have values to avoid validation errors
+      if (formData.businessType) profileData.businessType = formData.businessType
+      if (formData.industry) profileData.industry = formData.industry
+      if (formData.location.trim()) {
+        profileData.location = { country: formData.location.trim() }
+      }
+      if (formData.teamSize) profileData.teamSize = formData.teamSize
+      if (formData.primaryGoal) profileData.primaryGoal = formData.primaryGoal
+      if (formData.experienceLevel) profileData.experienceLevel = formData.experienceLevel
+      if (formData.monthlyRevenue) profileData.monthlyRevenue = formData.monthlyRevenue
+      if (formData.currentTools.length > 0) profileData.currentTools = formData.currentTools
+      
+      console.log('Sending profile data:', profileData)
+      const result = await updateUserProfile(profileData)
       
       if (result.success) {
         toast.success('Welcome to FreelanceHub! 🎉')
         navigate('/dashboard')
+      } else {
+        // Handle specific errors from the API
+        if (result.error) {
+          toast.error(result.error)
+        } else {
+          toast.error('Failed to save business details. Please try again.')
+        }
       }
     } catch (error) {
       console.error('Business setup error:', error)
-      toast.error('Failed to save business details. Please try again.')
+      
+      // Show specific error message if available
+      if (error.message) {
+        toast.error(error.message)
+      } else {
+        toast.error('Failed to save business details. Please try again.')
+      }
     } finally {
       setLoading(false)
     }

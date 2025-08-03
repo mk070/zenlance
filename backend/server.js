@@ -67,8 +67,8 @@ try {
   // Import middleware
   console.log('🔍 Loading middleware...');
   const errorModule = await import('./middleware/errorMiddleware.js');
-  errorHandler = errorModule.errorHandler;
-  notFound = errorModule.notFound;
+  errorHandler = errorModule.default.globalErrorHandler;
+  notFound = errorModule.default.notFound;
   console.log('✅ Error middleware loaded');
   
   const loggerModule = await import('./utils/logger.js');
@@ -219,14 +219,12 @@ console.log('🔍 Initializing database connection...');
 await connectDB();
 
 // Health check endpoint
-console.log('🔍 Setting up health check endpoint...');
 app.get('/api/health', (req, res) => {
-  res.status(200).json({
+  res.json({
     success: true,
-    message: 'Server is running',
+    message: 'FreelanceHub API is healthy',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV,
-    version: '1.0.0'
+    uptime: process.uptime()
   });
 });
 
@@ -236,7 +234,7 @@ try {
   app.use('/api/auth', authRoutes);
   console.log('✅ Auth routes mounted');
   
-  app.use('/api/user', userRoutes);
+  app.use('/api/users', userRoutes);
   console.log('✅ User routes mounted');
   
   app.use('/api/profile', profileRoutes);

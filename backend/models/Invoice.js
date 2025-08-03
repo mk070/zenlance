@@ -236,8 +236,7 @@ const invoiceSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-// Indexes for performance
-invoiceSchema.index({ invoiceNumber: 1 });
+// Performance indexes (removing duplicate invoiceNumber index since unique: true already creates one)
 invoiceSchema.index({ clientId: 1, status: 1 });
 invoiceSchema.index({ createdBy: 1, status: 1 });
 invoiceSchema.index({ dueDate: 1, status: 1 });
@@ -467,7 +466,7 @@ invoiceSchema.statics.findByUser = function(userId, options = {}) {
   }
 
   return this.find(query)
-    .populate('clientId', 'firstName lastName company email address')
+    .populate('clientId', 'firstName lastName company email')
     .populate('createdBy', 'firstName lastName email')
     .sort(options.sort || { issueDate: -1 });
 };

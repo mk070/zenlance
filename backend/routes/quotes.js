@@ -1,13 +1,13 @@
 import express from 'express';
 import Quote from '../models/Quote.js';
 import Client from '../models/Client.js';
-import authMiddleware from '../middleware/authMiddleware.js';
+import { authenticate } from '../middleware/authMiddleware.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
 
 // Get all quotes for the authenticated user
-router.get('/', authMiddleware, async (req, res) => {
+router.get('/', authenticate, async (req, res) => {
   try {
     const { status, clientId, dateFrom, dateTo, search, page = 1, limit = 20 } = req.query;
 
@@ -56,7 +56,7 @@ router.get('/', authMiddleware, async (req, res) => {
 });
 
 // Get quote statistics
-router.get('/statistics', authMiddleware, async (req, res) => {
+router.get('/statistics', authenticate, async (req, res) => {
   try {
     const { dateRange = 30 } = req.query;
     const statistics = await Quote.getQuoteStatistics(req.user.id, parseInt(dateRange));
@@ -92,7 +92,7 @@ router.get('/statistics', authMiddleware, async (req, res) => {
 });
 
 // Get expiring quotes
-router.get('/expiring', authMiddleware, async (req, res) => {
+router.get('/expiring', authenticate, async (req, res) => {
   try {
     const { days = 7 } = req.query;
     const expiringQuotes = await Quote.getExpiringQuotes(req.user.id, parseInt(days));
@@ -112,7 +112,7 @@ router.get('/expiring', authMiddleware, async (req, res) => {
 });
 
 // Get a single quote
-router.get('/:id', authMiddleware, async (req, res) => {
+router.get('/:id', authenticate, async (req, res) => {
   try {
     const quote = await Quote.findOne({ 
       _id: req.params.id,
@@ -145,7 +145,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
 });
 
 // Create a new quote
-router.post('/', authMiddleware, async (req, res) => {
+router.post('/', authenticate, async (req, res) => {
   try {
     const { clientId, ...quoteData } = req.body;
 
@@ -194,7 +194,7 @@ router.post('/', authMiddleware, async (req, res) => {
 });
 
 // Update a quote
-router.put('/:id', authMiddleware, async (req, res) => {
+router.put('/:id', authenticate, async (req, res) => {
   try {
     const quote = await Quote.findOne({
       _id: req.params.id,
@@ -243,7 +243,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
 });
 
 // Delete a quote
-router.delete('/:id', authMiddleware, async (req, res) => {
+router.delete('/:id', authenticate, async (req, res) => {
   try {
     const quote = await Quote.findOne({
       _id: req.params.id,
@@ -277,7 +277,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 });
 
 // Send quote to client
-router.post('/:id/send', authMiddleware, async (req, res) => {
+router.post('/:id/send', authenticate, async (req, res) => {
   try {
     const { recipients = [] } = req.body;
     
@@ -318,7 +318,7 @@ router.post('/:id/send', authMiddleware, async (req, res) => {
 });
 
 // Mark quote as viewed
-router.post('/:id/view', authMiddleware, async (req, res) => {
+router.post('/:id/view', authenticate, async (req, res) => {
   try {
     const quote = await Quote.findOne({
       _id: req.params.id,
@@ -350,7 +350,7 @@ router.post('/:id/view', authMiddleware, async (req, res) => {
 });
 
 // Accept quote
-router.post('/:id/accept', authMiddleware, async (req, res) => {
+router.post('/:id/accept', authenticate, async (req, res) => {
   try {
     const { acceptedBy } = req.body;
     
@@ -384,7 +384,7 @@ router.post('/:id/accept', authMiddleware, async (req, res) => {
 });
 
 // Reject quote
-router.post('/:id/reject', authMiddleware, async (req, res) => {
+router.post('/:id/reject', authenticate, async (req, res) => {
   try {
     const { reason } = req.body;
     
@@ -418,7 +418,7 @@ router.post('/:id/reject', authMiddleware, async (req, res) => {
 });
 
 // Convert quote to invoice
-router.post('/:id/convert-to-invoice', authMiddleware, async (req, res) => {
+router.post('/:id/convert-to-invoice', authenticate, async (req, res) => {
   try {
     const quote = await Quote.findOne({
       _id: req.params.id,
@@ -462,7 +462,7 @@ router.post('/:id/convert-to-invoice', authMiddleware, async (req, res) => {
 });
 
 // Duplicate quote
-router.post('/:id/duplicate', authMiddleware, async (req, res) => {
+router.post('/:id/duplicate', authenticate, async (req, res) => {
   try {
     const originalQuote = await Quote.findOne({
       _id: req.params.id,

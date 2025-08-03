@@ -88,52 +88,35 @@ const SignUp = () => {
       const result = await signUp(
         formData.email,
         formData.password,
-        {
-          first_name: formData.firstName.trim(),
-          last_name: formData.lastName.trim(),
-          full_name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
-          onboarding_completed: false // Will be completed after business details
-        }
+        formData.firstName.trim(),
+        formData.lastName.trim()
       )
       
       console.log('🔍 Signup result:', result)
       
       if (result.success) {
-        if (result.needsVerification) {
-          console.log('🔍 Verification needed, sending OTP...')
-          
-          // Update loading message
-          setLoadingMessage('Sending verification code...')
-          
-          // Show success message
-          toast.success('Account created! Sending verification code...', {
-            duration: 2000
+        setLoadingMessage('Account created! Redirecting to verification...')
+        setTimeout(() => {
+          navigate('/verify-otp', { 
+            state: { email: formData.email } 
           })
-          
-          // Small delay to show the sending message
-          setTimeout(() => {
-            console.log('🔍 Redirecting to OTP verification...')
-            navigate('/verify-otp', { 
-              state: { 
-                email: formData.email,
-                type: 'signup'
-              }
-            })
-          }, 1500)
-          
-          // Don't set loading to false immediately - keep showing until redirect
-          return
+        }, 1500)
+      } else {
+        // Display validation errors to user
+        if (result.validationErrors && result.validationErrors.length > 0) {
+          result.validationErrors.forEach(error => {
+            toast.error(`${error.field}: ${error.message}`)
+          })
+        } else if (result.error) {
+          toast.error(result.error)
         } else {
-          // If email confirmation is disabled, redirect to business details
-          toast.success('Account created successfully!')
-          navigate('/business-setup')
+          toast.error('Failed to create account. Please try again.')
         }
       }
     } catch (error) {
-      console.error('🔍 Signup error:', error)
-      toast.error('Failed to create account. Please try again.')
+      console.error('Signup error:', error)
+      toast.error('Network error. Please check your connection and try again.')
     } finally {
-      // Only set loading to false if we're not redirecting to OTP
       setLoading(false)
       setLoadingMessage('')
     }

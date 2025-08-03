@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import apiClient from '../lib/api-client.js'
 import toast from 'react-hot-toast'
-import { getAccessToken, isAuthenticated, setTokens, removeTokens } from '../lib/auth-utils'
+import { getAccessToken, isAuthenticated, setTokens, removeTokens, isAccessTokenExpired } from '../lib/auth-utils'
 
 const AuthContext = createContext({})
 
@@ -19,41 +19,73 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true)
   const [sessionChecked, setSessionChecked] = useState(false)
 
-  // Initialize authentication state
-  useEffect(() => {
-    const initializeAuth = async () => {
-      try {
-        const accessToken = getAccessToken()
-        
-        if (accessToken && isAuthenticated()) {
-          // Try to get current user
-          const userResult = await apiClient.getCurrentUser()
-          
-          if (userResult.success) {
-            setUser(userResult.user)
-            
-            // Get user profile
-            const profileResult = await apiClient.getUserProfile()
-            if (profileResult.success) {
-              setUserProfile(profileResult.profile)
-            }
-          } else {
-            // Token might be expired, clear it
-            removeTokens()
-          }
-        }
-        
-        setSessionChecked(true)
+  // Initialize auth state
+  const initializeAuth = async () => {
+    try {
+      const token = getAccessToken()
+      if (!token) {
         setLoading(false)
-      } catch (error) {
-        console.error('Error initializing auth:', error)
-        setLoading(false)
-        setSessionChecked(true)
+        return
       }
-    }
 
-    initializeAuth()
-  }, [])
+      // Check if token is expired
+      if (isAccessTokenExpired()) {
+        try {
+          // Try to refresh the token
+          const newToken = await apiClient.refreshAccessToken()
+          if (!newToken) {
+            throw new Error('Token refresh failed')
+          }
+        } catch (refreshError) {
+          console.warn('Token refresh failed during initialization:', refreshError)
+          removeTokens()
+          setLoading(false)
+          return
+        }
+      }
+
+      // Get current user
+      try {
+        const result = await apiClient.getCurrentUser()
+        if (result.success && result.user) {
+          setUser(result.user)
+          
+          // Try to get profile
+          try {
+            const profileResult = await apiClient.getProfile()
+            if (profileResult.success && profileResult.profile) {
+              setUserProfile(profileResult.profile)
+            } else {
+              // Set default profile if none found
+              setUserProfile({
+                onboardingCompleted: false,
+                firstName: result.user.firstName || '',
+                lastName: result.user.lastName || ''
+              })
+            }
+          } catch (profileError) {
+            console.warn('Profile fetch failed during initialization:', profileError)
+            // Set default profile
+            setUserProfile({
+              onboardingCompleted: false,
+              firstName: result.user.firstName || '',
+              lastName: result.user.lastName || ''
+            })
+          }
+        } else {
+          removeTokens()
+        }
+      } catch (userError) {
+        console.warn('User fetch failed during initialization:', userError)
+        removeTokens()
+      }
+    } catch (error) {
+      console.error('Error initializing auth:', error)
+      removeTokens()
+    } finally {
+      setLoading(false)
+    }
+  }
 
   // Sign up function
   const signUp = async (email, password, firstName, lastName) => {
@@ -69,13 +101,23 @@ export const AuthProvider = ({ children }) => {
         toast.success('Account created successfully! Please check your email for verification.')
         return { success: true }
       } else {
-        toast.error(result.error || 'Failed to create account')
+        // Handle validation errors
+        if (result.validationErrors && result.validationErrors.length > 0) {
+          // Display each validation error
+          result.validationErrors.forEach(error => {
+            toast.error(`${error.field}: ${error.message}`)
+          })
+        } else {
+          // Display general error
+          toast.error(result.error || 'Failed to create account')
+        }
         return { success: false, error: result.error, validationErrors: result.validationErrors }
       }
     } catch (error) {
       console.error('Signup error:', error)
-      toast.error('Network error. Please try again.')
-      return { success: false, error: 'Network error' }
+      const errorMessage = error.message || 'Network error. Please check your connection and try again.'
+      toast.error(errorMessage)
+      return { success: false, error: errorMessage }
     }
   }
 
@@ -90,18 +132,60 @@ export const AuthProvider = ({ children }) => {
         
         // Set user data
         setUser(result.user)
-        setUserProfile(result.user.profile)
+        
+        // Try to fetch profile, but don't fail signin if it fails
+        try {
+          const profileResult = await apiClient.getProfile()
+          if (profileResult.success && profileResult.profile) {
+            setUserProfile(profileResult.profile)
+          } else {
+            console.warn('Profile fetch returned unsuccessful result:', profileResult)
+            // Set a default profile if none exists
+            setUserProfile({
+              onboardingCompleted: false,
+              firstName: result.user.firstName || '',
+              lastName: result.user.lastName || ''
+            })
+          }
+        } catch (profileError) {
+          console.warn('Failed to fetch profile during signin:', profileError)
+          // Set a default profile if fetch fails
+          setUserProfile({
+            onboardingCompleted: false,
+            firstName: result.user.firstName || '',
+            lastName: result.user.lastName || ''
+          })
+        }
         
         toast.success('Welcome back!')
         return { success: true, user: result.user }
       } else {
-        toast.error(result.error || 'Failed to sign in')
-        return { success: false, error: result.error }
+        const errorMessage = result.error || 'Failed to sign in'
+        toast.error(errorMessage)
+        return { success: false, error: errorMessage }
       }
     } catch (error) {
       console.error('Signin error:', error)
-      toast.error('Network error. Please try again.')
-      return { success: false, error: 'Network error' }
+      
+      let errorMessage = 'Sign in failed. Please try again.'
+      
+      // Handle specific error types
+      if (error.status === 403) {
+        errorMessage = 'Please verify your email address before signing in.'
+      } else if (error.status === 401) {
+        errorMessage = 'Invalid email or password.'
+      } else if (error.status === 423) {
+        errorMessage = 'Account temporarily locked. Please try again later.'
+      } else if (error.message.includes('Network error')) {
+        errorMessage = 'Network error. Please check your connection.'
+      } else if (error.data?.error) {
+        errorMessage = error.data.error
+      } else if (error.message) {
+        errorMessage = error.message
+      }
+      
+      toast.error(errorMessage)
+      return { success: false, error: errorMessage }
     }
   }
 
@@ -188,23 +272,61 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  // Update user profile function
+  // Update user profile
   const updateUserProfile = async (profileData) => {
     try {
+      // Check if user is logged in
+      if (!user) {
+        throw new Error('User not logged in')
+      }
+
+      // Check if we have a valid access token
+      const token = getAccessToken()
+      if (!token) {
+        throw new Error('No access token available')
+      }
+
+      console.log('Updating user profile...', profileData)
+      
       const result = await apiClient.updateUserProfile(profileData)
 
       if (result.success) {
+        // Update local user profile state
         setUserProfile(result.profile)
         toast.success('Profile updated successfully!')
         return { success: true, profile: result.profile }
       } else {
-        toast.error(result.error || 'Failed to update profile')
-        return { success: false, error: result.error }
+        const errorMessage = result.error || 'Failed to update profile'
+        toast.error(errorMessage)
+        return { success: false, error: errorMessage }
       }
     } catch (error) {
-      console.error('Update profile error:', error)
-      toast.error('Network error. Please try again.')
-      return { success: false, error: 'Network error' }
+      console.error('Profile update error:', error)
+      
+      let errorMessage = 'Failed to update profile. Please try again.'
+      
+      // Handle specific error types
+      if (error.message.includes('Session expired')) {
+        errorMessage = 'Your session has expired. Please sign in again.'
+        // Don't show toast here as user will be redirected
+      } else if (error.status === 401) {
+        errorMessage = 'Authentication failed. Please sign in again.'
+      } else if (error.status === 403) {
+        errorMessage = 'You don\'t have permission to update this profile.'
+      } else if (error.status === 400) {
+        errorMessage = error.data?.error || 'Invalid profile data provided.'
+      } else if (error.message.includes('Network error')) {
+        errorMessage = 'Network error. Please check your connection.'
+      } else if (error.message) {
+        errorMessage = error.message
+      }
+      
+      // Only show toast if not a session expiry (as user will be redirected)
+      if (!error.message.includes('Session expired')) {
+        toast.error(errorMessage)
+      }
+      
+      return { success: false, error: errorMessage }
     }
   }
 
@@ -325,6 +447,11 @@ export const AuthProvider = ({ children }) => {
   const isUserAuthenticated = () => {
     return isAuthenticated() && user !== null
   }
+
+  // Initialize auth on component mount
+  useEffect(() => {
+    initializeAuth()
+  }, [])
 
   const value = {
     user,

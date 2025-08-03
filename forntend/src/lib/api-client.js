@@ -1,4 +1,4 @@
-import { getAccessToken, setAccessToken, removeAccessToken } from './auth-utils'
+import { getAccessToken, setAccessToken, removeAccessToken, getRefreshToken, setRefreshToken, removeTokens } from './auth-utils'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
@@ -9,7 +9,7 @@ class ApiClient {
 
   async request(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`
-    const token = getAccessToken()
+    let token = getAccessToken()
     
     const config = {
       headers: {
@@ -24,63 +24,125 @@ class ApiClient {
     }
 
     try {
-      const response = await fetch(url, config)
+      let response = await fetch(url, config)
       
       // Handle 401 Unauthorized - token might be expired
-      if (response.status === 401) {
+      if (response.status === 401 && token) {
+        console.log('Token expired, attempting to refresh...')
+        
         try {
           const newToken = await this.refreshAccessToken()
           if (newToken) {
             // Retry the original request with new token
             config.headers.Authorization = `Bearer ${newToken}`
-            const retryResponse = await fetch(url, config)
-            return await this.handleResponse(retryResponse)
+            response = await fetch(url, config)
+            console.log('Request retried with new token')
+          } else {
+            throw new Error('Token refresh returned no token')
           }
         } catch (refreshError) {
-          // Refresh failed, redirect to login
-          removeAccessToken()
-          window.location.href = '/signin'
+          console.warn('Token refresh failed:', refreshError)
+          removeTokens()
+          
+          // Check if we're not already on the signin page to avoid infinite redirects
+          if (!window.location.pathname.includes('/signin')) {
+            window.location.href = '/signin'
+          }
+          
           throw new Error('Session expired. Please sign in again.')
         }
       }
 
       return await this.handleResponse(response)
-  } catch (error) {
+    } catch (error) {
       console.error('API request failed:', error)
-    throw error
+      
+      // Add more context to the error
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        throw new Error('Network error. Please check your connection and try again.')
+      }
+      
+      throw error
+    }
   }
-}
 
   async handleResponse(response) {
     const contentType = response.headers.get('content-type')
     
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json()
+      
+      // If response is not ok, throw an error with the parsed data
+      if (!response.ok) {
+        const errorMessage = data.error || data.message || `HTTP ${response.status}`;
+        const error = new Error(errorMessage);
+        error.status = response.status;
+        error.data = data;
+        throw error;
+      }
+      
       return data
     } else {
-      // For non-JSON responses (like file downloads)
+      // For non-JSON responses, check if it's an error
+      if (!response.ok) {
+        const errorText = await response.text()
+        const error = new Error(errorText || `HTTP ${response.status}`)
+        error.status = response.status
+        throw error
+      }
+      
+      // For successful non-JSON responses (like file downloads)
       return response
     }
   }
 
     async refreshAccessToken() {
     try {
+      const refreshToken = getRefreshToken()
+      
+      if (!refreshToken) {
+        console.warn('No refresh token available')
+        throw new Error('No refresh token available')
+      }
+
+      console.log('Attempting to refresh access token...')
+      
       const response = await fetch(`${this.baseURL}/auth/refresh-token`, {
         method: 'POST',
-        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refreshToken }),
       })
 
       if (response.ok) {
         const data = await response.json()
+        
         if (data.success && data.tokens && data.tokens.accessToken) {
+          console.log('Token refresh successful')
           setAccessToken(data.tokens.accessToken)
+          
+          // Update refresh token if a new one is provided
+          if (data.tokens.refreshToken) {
+            setRefreshToken(data.tokens.refreshToken)
+          }
+          
           return data.tokens.accessToken
+        } else {
+          console.error('Invalid token refresh response:', data)
+          throw new Error(data.error || 'Invalid token refresh response')
         }
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        console.error('Token refresh failed with status:', response.status, errorData)
+        const errorMessage = errorData.error || errorData.message || `Token refresh failed with status ${response.status}`
+        throw new Error(errorMessage)
       }
       
-      throw new Error('Token refresh failed')
     } catch (error) {
       console.error('Token refresh error:', error)
+      // Clear tokens if refresh fails
+      removeTokens()
       throw error
     }
   }
@@ -167,6 +229,10 @@ class ApiClient {
   }
 
   // Profile methods
+  async getProfile() {
+    return this.request('/profile/me')
+  }
+
   async getUserProfile() {
     return this.request('/profile/me')
   }

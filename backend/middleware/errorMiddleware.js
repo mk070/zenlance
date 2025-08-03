@@ -2,11 +2,12 @@ import { logger, errorLogger } from '../utils/logger.js';
 
 // Custom error class
 export class AppError extends Error {
-  constructor(message, statusCode, isOperational = true) {
+  constructor(message, statusCode, status = 'error', isOperational = true, validationErrors = []) {
     super(message);
     this.statusCode = statusCode;
-    this.status = `${statusCode}`.startsWith('4') ? 'fail' : 'error';
+    this.status = status;
     this.isOperational = isOperational;
+    this.validationErrors = validationErrors;
 
     Error.captureStackTrace(this, this.constructor);
   }
@@ -18,99 +19,115 @@ export const notFound = (req, res, next) => {
   next(error);
 };
 
-// Global error handling middleware
-export const errorHandler = (err, req, res, next) => {
+// Global error handler
+export const globalErrorHandler = (err, req, res, next) => {
+  // Ensure we have a proper error object
+  if (!err) {
+    return next();
+  }
+
+  // Log error details
+  logger.error('Global error handler:', {
+    message: err.message,
+    stack: err.stack,
+    url: req.originalUrl,
+    method: req.method,
+    ip: req.ip,
+    userAgent: req.get('User-Agent'),
+    userId: req.user?.id
+  });
+
+  // Handle specific error types
   let error = { ...err };
   error.message = err.message;
 
-  // Log error
-  errorLogger.api(err, req, {
-    body: req.body,
-    params: req.params,
-    query: req.query,
-    headers: {
-      'user-agent': req.get('User-Agent'),
-      'authorization': req.get('Authorization') ? 'Bearer [REDACTED]' : undefined
-    }
-  });
-
-  // Mongoose bad ObjectId
-  if (err.name === 'CastError') {
-    const message = 'Resource not found';
-    error = new AppError(message, 404);
+  // Handle Mongoose validation errors
+  if (err.name === 'ValidationError') {
+    const message = 'Validation Error';
+    const validationErrors = Object.values(err.errors).map(error => ({
+      field: error.path,
+      message: error.message
+    }));
+    error = new AppError(message, 400, 'fail', true, validationErrors);
   }
 
-  // Mongoose duplicate key
+  // Handle Mongoose duplicate key error
   if (err.code === 11000) {
     const field = Object.keys(err.keyValue)[0];
-    const value = err.keyValue[field];
-    const message = `${field.charAt(0).toUpperCase() + field.slice(1)} '${value}' already exists`;
+    const message = `${field} already exists`;
     error = new AppError(message, 400);
   }
 
-  // Mongoose validation error
-  if (err.name === 'ValidationError') {
-    const message = Object.values(err.errors).map(error => error.message).join(', ');
+  // Handle Mongoose CastError
+  if (err.name === 'CastError') {
+    const message = `Invalid ${err.path}: ${err.value}`;
     error = new AppError(message, 400);
   }
 
-  // JWT errors
+  // Handle JWT errors
   if (err.name === 'JsonWebTokenError') {
-    const message = 'Invalid authentication token';
+    const message = 'Invalid token. Please log in again!';
     error = new AppError(message, 401);
   }
 
   if (err.name === 'TokenExpiredError') {
-    const message = 'Authentication token expired';
+    const message = 'Your token has expired! Please log in again.';
     error = new AppError(message, 401);
   }
 
-  // Rate limit error
+  // Handle rate limit errors
   if (err.status === 429) {
-    const message = 'Too many requests, please try again later';
+    const message = 'Too many requests, please try again later.';
     error = new AppError(message, 429);
   }
 
-  // Multer errors (file upload)
-  if (err.code === 'LIMIT_FILE_SIZE') {
-    const message = 'File size too large';
-    error = new AppError(message, 400);
-  }
-
-  if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-    const message = 'Unexpected file field';
-    error = new AppError(message, 400);
+  // Handle network/connection errors
+  if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
+    const message = 'Service temporarily unavailable. Please try again later.';
+    error = new AppError(message, 503);
   }
 
   // Default to 500 server error
-  const statusCode = error.statusCode || 500;
-  const message = error.message || 'Internal server error';
+  if (!error.statusCode) {
+    error.statusCode = 500;
+    error.status = 'error';
+    error.isOperational = true;
+  }
 
   // Send error response
+  sendErrorResponse(error, res);
+};
+
+// Enhanced error response handler
+const sendErrorResponse = (err, res) => {
+  // Ensure response hasn't been sent already
+  if (res.headersSent) {
+    return;
+  }
+
   const response = {
     success: false,
-    error: message,
-    ...(process.env.NODE_ENV === 'development' && {
-      stack: err.stack,
-      details: error
-    })
+    status: err.status || 'error',
+    message: err.message || 'Something went wrong!'
   };
 
-  // Add request ID if available
-  if (req.requestId) {
-    response.requestId = req.requestId;
+  // Add validation errors if present
+  if (err.validationErrors) {
+    response.validationErrors = err.validationErrors;
   }
 
-  // Add validation errors if available
-  if (err.name === 'ValidationError') {
-    response.validationErrors = Object.values(err.errors).map(error => ({
-      field: error.path,
-      message: error.message,
-      value: error.value
-    }));
+  // Add error details in development
+  if (process.env.NODE_ENV === 'development') {
+    response.error = err;
+    response.stack = err.stack;
   }
 
-  res.status(statusCode).json(response);
+  // Add rate limit info if applicable
+  if (err.statusCode === 429 && err.retryAfter) {
+    response.retryAfter = err.retryAfter;
+  }
+
+  res.status(err.statusCode || 500).json(response);
 };
 
 // Async error handler wrapper
@@ -228,7 +245,8 @@ export const handleSpecificErrors = {
 export default {
   AppError,
   notFound,
-  errorHandler,
+  globalErrorHandler,
+  errorHandler: globalErrorHandler, // Alias for compatibility
   catchAsync,
   handleValidationError,
   handleDatabaseError,

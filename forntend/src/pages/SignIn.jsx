@@ -14,6 +14,7 @@ const SignIn = () => {
   const [isOtpMode, setIsOtpMode] = useState(false)
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [error, setError] = useState('')
   
   const { signIn, signInWithOTP } = useAuth()
   const navigate = useNavigate()
@@ -29,28 +30,27 @@ const SignIn = () => {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
-    
+    setError('')
+
     try {
-      let result
-      if (isOtpMode) {
-        result = await signInWithOTP(formData.email)
-        if (result.success) {
-          navigate('/verify-otp', { 
-            state: { 
-              email: formData.email,
-              type: 'signin'
-            }
-          })
+      const result = await signIn(formData.email, formData.password)
+      
+      if (result.success) {
+        // Check if user needs to complete onboarding
+        const onboardingCompleted = result.user?.onboardingCompleted || false
+        console.log('User onboarding status:', onboardingCompleted)
+        
+        if (!onboardingCompleted) {
+          navigate('/business-setup')
+        } else {
+          navigate('/dashboard')
         }
       } else {
-        result = await signIn(formData.email, formData.password)
-        if (result.success) {
-          const redirectTo = location.state?.from || '/dashboard'
-          navigate(redirectTo)
-        }
+        setError(result.error || 'Failed to sign in')
       }
     } catch (error) {
       console.error('Sign in error:', error)
+      setError(error.message || 'An unexpected error occurred')
     } finally {
       setLoading(false)
     }

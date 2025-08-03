@@ -315,7 +315,6 @@ const projectSchema = new mongoose.Schema({
 });
 
 // Indexes
-projectSchema.index({ projectNumber: 1 });
 projectSchema.index({ clientId: 1, status: 1 });
 projectSchema.index({ createdBy: 1, status: 1 });
 projectSchema.index({ startDate: 1, endDate: 1 });
