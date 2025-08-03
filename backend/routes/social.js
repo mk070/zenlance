@@ -2,26 +2,11 @@ import express from 'express';
 import { body, validationResult, query } from 'express-validator';
 import SocialPost from '../models/SocialPost.js';
 import { catchAsync, AppError, handleValidationError } from '../middleware/errorMiddleware.js';
-import { authenticate } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// Get all social posts for user
-router.get('/', authenticate, [
-  query('page').optional().isInt({ min: 1 }),
-  query('limit').optional().isInt({ min: 1, max: 100 }),
-  query('status').optional().isIn(['draft', 'scheduled', 'published', 'failed']),
-  query('platform').optional().isIn(['twitter', 'instagram', 'linkedin', 'facebook', 'youtube']),
-  query('search').optional().trim(),
-  query('dateFrom').optional().isISO8601(),
-  query('dateTo').optional().isISO8601(),
-  query('sortBy').optional().isIn(['createdAt', 'scheduledDate', 'publishedDate', 'performance.engagement']),
-  query('sortOrder').optional().isIn(['asc', 'desc'])
-], catchAsync(async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json(handleValidationError(errors));
-  }
+// Get all social posts (removed authentication for now)
+router.get('/', catchAsync(async (req, res) => {
 
   const {
     page = 1,
@@ -35,9 +20,8 @@ router.get('/', authenticate, [
     sortOrder = 'desc'
   } = req.query;
 
-  // Build query
+  // Build query - simplified without user authentication
   const query = { 
-    createdBy: req.user._id,
     isActive: true
   };
 
@@ -54,7 +38,7 @@ router.get('/', authenticate, [
     query.$or = [
       { content: { $regex: search, $options: 'i' } },
       { title: { $regex: search, $options: 'i' } },
-      { hashtags: { $in: [new RegExp(search, 'i')] } }
+      { hashtags: { $regex: search, $options: 'i' } }
     ];
   }
 
@@ -66,7 +50,6 @@ router.get('/', authenticate, [
 
   const [posts, totalCount] = await Promise.all([
     SocialPost.find(query)
-      .populate('createdBy', 'firstName lastName email')
       .sort(sort)
       .skip(skip)
       .limit(parseInt(limit)),
@@ -92,102 +75,123 @@ router.get('/', authenticate, [
 }));
 
 // Get social media analytics
-router.get('/analytics', authenticate, [
-  query('days').optional().isInt({ min: 1, max: 365 })
-], catchAsync(async (req, res) => {
-  const { days = 30 } = req.query;
+router.get('/analytics', catchAsync(async (req, res) => {
+  const { dateRange = 30 } = req.query;
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - parseInt(dateRange));
 
-  const [performanceStats, platformStats, topPosts] = await Promise.all([
-    SocialPost.getPerformanceStats(req.user._id, parseInt(days)),
-    SocialPost.getPlatformStats(req.user._id),
-    SocialPost.getTopPerformingPosts(req.user._id, 5)
+  const totalPosts = await SocialPost.countDocuments({ isActive: true });
+  const scheduledPosts = await SocialPost.countDocuments({ 
+    status: 'scheduled', 
+    isActive: true 
+  });
+  const publishedPosts = await SocialPost.countDocuments({ 
+    status: 'published', 
+    isActive: true,
+    publishedDate: { $gte: startDate }
+  });
+
+  // Calculate performance stats
+  const performanceAgg = await SocialPost.aggregate([
+    {
+      $match: {
+        status: 'published',
+        isActive: true,
+        publishedDate: { $gte: startDate }
+      }
+    },
+    {
+      $group: {
+        _id: null,
+        totalViews: { $sum: '$performance.views' },
+        totalLikes: { $sum: '$performance.likes' },
+        totalShares: { $sum: '$performance.shares' },
+        totalComments: { $sum: '$performance.comments' },
+        totalReach: { $sum: '$performance.reach' },
+        totalImpressions: { $sum: '$performance.impressions' },
+        avgEngagement: { $avg: '$performance.engagement' },
+        publishedCount: { $sum: 1 }
+      }
+    }
   ]);
 
-  const totalPosts = await SocialPost.countDocuments({
-    createdBy: req.user._id,
-    isActive: true
-  });
+  const performanceStats = performanceAgg[0] || {
+    totalViews: 0,
+    totalLikes: 0,
+    totalShares: 0,
+    totalComments: 0,
+    totalReach: 0,
+    totalImpressions: 0,
+    avgEngagement: 0,
+    publishedCount: 0
+  };
+
+  // Get platform stats
+  const platformStats = await SocialPost.aggregate([
+    {
+      $match: {
+        status: 'published',
+        isActive: true,
+        publishedDate: { $gte: startDate }
+      }
+    },
+    { $unwind: '$platforms' },
+    {
+      $group: {
+        _id: '$platforms',
+        postCount: { $sum: 1 },
+        totalViews: { $sum: '$performance.views' },
+        totalLikes: { $sum: '$performance.likes' },
+        avgEngagement: { $avg: '$performance.engagement' }
+      }
+    },
+    { $sort: { postCount: -1 } }
+  ]);
+
+  // Get top posts
+  const topPosts = await SocialPost.find({
+    status: 'published',
+    isActive: true,
+    publishedDate: { $gte: startDate }
+  })
+  .sort({ 'performance.engagement': -1 })
+  .limit(5)
+  .select('content platforms publishedDate performance');
 
   res.json({
     success: true,
     data: {
-      performanceStats: performanceStats[0] || {
-        totalPosts: 0,
-        totalViews: 0,
-        totalLikes: 0,
-        totalShares: 0,
-        totalComments: 0,
-        avgEngagement: 0
-      },
+      totalPosts,
+      scheduledPosts,
+      draftPosts: totalPosts - publishedPosts - scheduledPosts,
+      performanceStats,
       platformStats,
-      topPosts,
-      totalPosts
+      topPosts
     }
   });
 }));
 
-// Get connected social accounts (mock data for now)
-router.get('/accounts', authenticate, catchAsync(async (req, res) => {
-  // This would normally fetch from a social accounts table
-  // For now, return mock data
+// Get connected social accounts (mock data)
+router.get('/accounts', catchAsync(async (req, res) => {
   const mockAccounts = [
-    {
-      platform: 'twitter',
-      username: '@yourcompany',
-      connected: true,
-      isActive: true,
-      accessToken: 'encrypted_token',
-      connectedAt: new Date('2024-01-01')
-    },
-    {
-      platform: 'linkedin',
-      username: 'Your Company',
-      connected: true,
-      isActive: true,
-      accessToken: 'encrypted_token',
-      connectedAt: new Date('2024-01-01')
-    },
-    {
-      platform: 'instagram',
-      username: '@yourcompany',
-      connected: false,
-      isActive: false,
-      accessToken: null,
-      connectedAt: null
-    },
-    {
-      platform: 'facebook',
-      username: 'Your Company Page',
-      connected: false,
-      isActive: false,
-      accessToken: null,
-      connectedAt: null
-    },
-    {
-      platform: 'youtube',
-      username: 'Your Company Channel',
-      connected: false,
-      isActive: false,
-      accessToken: null,
-      connectedAt: null
-    }
+    { platform: 'facebook', name: 'Your Business', followers: '12.5K', status: 'connected' },
+    { platform: 'instagram', name: '@yourbusiness', followers: '8.2K', status: 'connected' },
+    { platform: 'twitter', name: '@yourbusiness', followers: '5.1K', status: 'connected' },
+    { platform: 'linkedin', name: 'Your Business', followers: '3.7K', status: 'connected' }
   ];
 
   res.json({
     success: true,
-    data: {
-      accounts: mockAccounts
-    }
+    data: mockAccounts
   });
 }));
 
 // Get single social post
-router.get('/:id', authenticate, catchAsync(async (req, res) => {
+router.get('/:id', catchAsync(async (req, res) => {
   const post = await SocialPost.findOne({
     _id: req.params.id,
-    createdBy: req.user._id,
     isActive: true
-  }).populate('createdBy', 'firstName lastName email');
+  });
 
   if (!post) {
     throw new AppError('Post not found', 404);
@@ -195,83 +199,88 @@ router.get('/:id', authenticate, catchAsync(async (req, res) => {
 
   res.json({
     success: true,
-    data: {
-      post
-    }
+    data: post
   });
 }));
 
 // Create new social post
-router.post('/', authenticate, [
-  body('content').trim().isLength({ min: 1, max: 5000 }).withMessage('Content is required and must be less than 5000 characters'),
-  body('title').optional().trim().isLength({ max: 200 }),
-  body('platforms').isArray({ min: 1 }).withMessage('At least one platform is required'),
-  body('platforms.*').isIn(['twitter', 'instagram', 'linkedin', 'facebook', 'youtube']),
-  body('postType').optional().isIn(['text', 'image', 'video', 'link', 'story', 'reel']),
-  body('scheduledDate').optional().isISO8601(),
-  body('hashtags').optional().isArray(),
-  body('hashtags.*').optional().trim().isLength({ max: 50 }),
-  body('mentions').optional().isArray(),
-  body('mentions.*').optional().trim().isLength({ max: 50 }),
-  body('targetAudience').optional().trim().isLength({ max: 200 }),
-  body('category').optional().isIn([
-    'business_update', 'product_launch', 'behind_scenes', 'industry_insights',
-    'customer_success', 'educational', 'motivational', 'team_spotlight',
-    'company_culture', 'event_announcement', 'thought_leadership', 'user_generated'
-  ])
-], catchAsync(async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json(handleValidationError(errors));
+router.post('/', catchAsync(async (req, res) => {
+  console.log('POST /api/social - Request body:', req.body);
+  console.log("POSTED RA😒");
+
+  // Basic checks
+  if (!req.body.content || !req.body.platforms || !Array.isArray(req.body.platforms) || req.body.platforms.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Content and at least one platform are required',
+      received: {
+        content: req.body.content,
+        platforms: req.body.platforms
+      }
+    });
   }
 
   const postData = {
-    ...req.body,
-    createdBy: req.user._id
+    content: req.body.content,
+    title: req.body.title || '',
+    platforms: req.body.platforms,
+    hashtags: req.body.hashtags || '',
+    link: req.body.link || '',
+    status: req.body.status || 'draft',
+    targetAudience: req.body.targetAudience || '',
+    category: req.body.category || ''
   };
 
-  // If scheduledDate is provided, set status to scheduled
-  if (postData.scheduledDate) {
-    postData.status = 'scheduled';
-  } else if (req.body.status === 'published') {
-    postData.status = 'published';
+  // Handle media files
+  if (req.body.mediaFiles && Array.isArray(req.body.mediaFiles)) {
+    postData.media = req.body.mediaFiles;
+  }
+
+  // Handle scheduling
+  if (req.body.scheduledDate) {
+    postData.scheduledDate = new Date(req.body.scheduledDate);
+    if (postData.status !== 'draft') {
+      postData.status = 'scheduled';
+    }
+  }
+
+  // Set published date if status is published
+  if (postData.status === 'published') {
     postData.publishedDate = new Date();
   }
 
-  const post = new SocialPost(postData);
-  await post.save();
+  try {
+    console.log('Creating post with data:', postData);
+    const post = new SocialPost(postData);
+    console.log('Post created, attempting to save...');
+    await post.save();
+    console.log('Post saved successfully:', post._id);
 
-  await post.populate('createdBy', 'firstName lastName email');
+    const message = postData.status === 'published' ? 'Post published successfully!' 
+                  : postData.status === 'scheduled' ? 'Post scheduled successfully!' 
+                  : 'Post saved as draft!';
 
-  res.status(201).json({
-    success: true,
-    message: 'Social post created successfully',
-    data: {
-      post
-    }
-  });
+    res.status(201).json({
+      success: true,
+      message,
+      data: post
+    });
+  } catch (saveError) {
+    console.error('Error saving post to MongoDB:', saveError);
+    res.status(400).json({
+      success: false,
+      message: 'Failed to save post to database',
+      error: saveError.message,
+      details: saveError
+    });
+  }
 }));
 
 // Update social post
-router.put('/:id', authenticate, [
-  body('content').optional().trim().isLength({ min: 1, max: 5000 }),
-  body('title').optional().trim().isLength({ max: 200 }),
-  body('platforms').optional().isArray({ min: 1 }),
-  body('platforms.*').optional().isIn(['twitter', 'instagram', 'linkedin', 'facebook', 'youtube']),
-  body('postType').optional().isIn(['text', 'image', 'video', 'link', 'story', 'reel']),
-  body('scheduledDate').optional().isISO8601(),
-  body('hashtags').optional().isArray(),
-  body('mentions').optional().isArray(),
-  body('status').optional().isIn(['draft', 'scheduled', 'published', 'failed'])
-], catchAsync(async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json(handleValidationError(errors));
-  }
+router.put('/:id', catchAsync(async (req, res) => {
 
   const post = await SocialPost.findOne({
     _id: req.params.id,
-    createdBy: req.user._id,
     isActive: true
   });
 
@@ -279,25 +288,45 @@ router.put('/:id', authenticate, [
     throw new AppError('Post not found', 404);
   }
 
-  Object.assign(post, req.body);
-  await post.save();
+  // Update fields
+  if (req.body.content !== undefined) post.content = req.body.content;
+  if (req.body.title !== undefined) post.title = req.body.title;
+  if (req.body.platforms !== undefined) post.platforms = req.body.platforms;
+  if (req.body.hashtags !== undefined) post.hashtags = req.body.hashtags;
+  if (req.body.link !== undefined) post.link = req.body.link;
+  if (req.body.targetAudience !== undefined) post.targetAudience = req.body.targetAudience;
+  if (req.body.category !== undefined) post.category = req.body.category;
 
-  await post.populate('createdBy', 'firstName lastName email');
+  // Handle media files
+  if (req.body.mediaFiles !== undefined) {
+    post.media = req.body.mediaFiles;
+  }
+
+  // Handle status and scheduling
+  if (req.body.status !== undefined) {
+    post.status = req.body.status;
+    if (req.body.status === 'published' && !post.publishedDate) {
+      post.publishedDate = new Date();
+    }
+  }
+
+  if (req.body.scheduledDate !== undefined) {
+    post.scheduledDate = req.body.scheduledDate ? new Date(req.body.scheduledDate) : null;
+  }
+
+  await post.save();
 
   res.json({
     success: true,
-    message: 'Social post updated successfully',
-    data: {
-      post
-    }
+    message: 'Post updated successfully',
+    data: post
   });
 }));
 
 // Delete social post (soft delete)
-router.delete('/:id', authenticate, catchAsync(async (req, res) => {
+router.delete('/:id', catchAsync(async (req, res) => {
   const post = await SocialPost.findOne({
     _id: req.params.id,
-    createdBy: req.user._id,
     isActive: true
   });
 
@@ -310,111 +339,15 @@ router.delete('/:id', authenticate, catchAsync(async (req, res) => {
 
   res.json({
     success: true,
-    message: 'Social post deleted successfully'
-  });
-}));
-
-// Publish post immediately
-router.post('/:id/publish', authenticate, catchAsync(async (req, res) => {
-  const post = await SocialPost.findOne({
-    _id: req.params.id,
-    createdBy: req.user._id,
-    isActive: true
-  });
-
-  if (!post) {
-    throw new AppError('Post not found', 404);
-  }
-
-  await post.publish();
-
-  res.json({
-    success: true,
-    message: 'Post published successfully',
-    data: {
-      post
-    }
-  });
-}));
-
-// Connect social account
-router.post('/accounts/:platform/connect', authenticate, [
-  body('accessToken').notEmpty().withMessage('Access token is required'),
-  body('username').optional().trim(),
-  body('accountId').optional().trim()
-], catchAsync(async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json(handleValidationError(errors));
-  }
-
-  const { platform } = req.params;
-  const { accessToken, username, accountId } = req.body;
-
-  if (!['twitter', 'instagram', 'linkedin', 'facebook', 'youtube'].includes(platform)) {
-    throw new AppError('Invalid platform', 400);
-  }
-
-  // This would normally save to a social accounts table
-  // For now, just return success
-  res.json({
-    success: true,
-    message: `${platform} account connected successfully`,
-    data: {
-      platform,
-      username: username || `@${platform}`,
-      connected: true,
-      connectedAt: new Date()
-    }
-  });
-}));
-
-// Disconnect social account
-router.delete('/accounts/:platform/disconnect', authenticate, catchAsync(async (req, res) => {
-  const { platform } = req.params;
-
-  if (!['twitter', 'instagram', 'linkedin', 'facebook', 'youtube'].includes(platform)) {
-    throw new AppError('Invalid platform', 400);
-  }
-
-  // This would normally remove from social accounts table
-  // For now, just return success
-  res.json({
-    success: true,
-    message: `${platform} account disconnected successfully`
-  });
-}));
-
-// Get scheduled posts that need to be published
-router.get('/scheduled/pending', authenticate, catchAsync(async (req, res) => {
-  const posts = await SocialPost.getScheduledPosts(req.user._id);
-
-  res.json({
-    success: true,
-    data: {
-      posts
-    }
+    message: 'Post deleted successfully'
   });
 }));
 
 // Update post performance metrics
-router.post('/:id/performance', authenticate, [
-  body('views').optional().isInt({ min: 0 }),
-  body('likes').optional().isInt({ min: 0 }),
-  body('shares').optional().isInt({ min: 0 }),
-  body('comments').optional().isInt({ min: 0 }),
-  body('clicks').optional().isInt({ min: 0 }),
-  body('reach').optional().isInt({ min: 0 }),
-  body('impressions').optional().isInt({ min: 0 })
-], catchAsync(async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json(handleValidationError(errors));
-  }
+router.put('/:id/performance', catchAsync(async (req, res) => {
 
   const post = await SocialPost.findOne({
     _id: req.params.id,
-    createdBy: req.user._id,
     isActive: true
   });
 
@@ -422,15 +355,57 @@ router.post('/:id/performance', authenticate, [
     throw new AppError('Post not found', 404);
   }
 
-  await post.updatePerformance(req.body);
+  // Update performance metrics
+  Object.keys(req.body).forEach(key => {
+    if (post.performance[key] !== undefined) {
+      post.performance[key] = req.body[key];
+    }
+  });
+
+  await post.save();
 
   res.json({
     success: true,
     message: 'Performance metrics updated successfully',
-    data: {
-      post
-    }
+    data: post
   });
 }));
 
-export default router; 
+// Manually publish a scheduled post
+router.post('/:id/publish', catchAsync(async (req, res) => {
+  const post = await SocialPost.findOne({
+    _id: req.params.id,
+    status: 'scheduled',
+    isActive: true
+  });
+
+  if (!post) {
+    throw new AppError('Scheduled post not found', 404);
+  }
+
+  post.status = 'published';
+  post.publishedDate = new Date();
+  await post.save();
+
+  res.json({
+    success: true,
+    message: 'Post published successfully',
+    data: post
+  });
+}));
+
+// Get scheduled posts that need publishing
+router.get('/scheduled', catchAsync(async (req, res) => {
+  const scheduledPosts = await SocialPost.find({
+    status: 'scheduled',
+    scheduledDate: { $lte: new Date() },
+    isActive: true
+  }).sort({ scheduledDate: 1 });
+
+  res.json({
+    success: true,
+    data: scheduledPosts
+  });
+}));
+
+export default router;

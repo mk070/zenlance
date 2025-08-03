@@ -20,12 +20,23 @@ import {
   ThumbsUp,
   MoreHorizontal,
   Bookmark,
+  Play,
   Sparkles,
   Loader2,
-  Download
+  Download,
+  RefreshCw,
+  Wand2
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import apiClient from '../lib/api-client'
+import { 
+  savePost,
+  generateSampleImages,
+  rephraseTextContent,
+  generateTextContent,
+  urlToFile,
+  isValidUrl,
+  getPlatformConfigs
+} from '../lib/social-api-client'
 
 // Image processing utilities
 const createImagePreview = (file) => {
@@ -34,62 +45,6 @@ const createImagePreview = (file) => {
     reader.onload = (e) => resolve(e.target.result)
     reader.readAsDataURL(file)
   })
-}
-
-// AI Image Generation Service (Local Storage Implementation)
-// TODO: BACKEND INTEGRATION NEEDED
-// These functions should be moved to backend services:
-// 1. generateAIImage() - Call actual AI service (OpenAI DALL-E, Midjourney, Stable Diffusion)
-// 2. saveGeneratedImage() - Store images in cloud storage
-// 3. getGeneratedImageHistory() - Retrieve user's generated images
-const AIImageService = {
-  // Simulates AI image generation - REPLACE WITH BACKEND API CALL
-  generateImage: async (prompt, style = 'realistic') => {
-    // TODO: Replace with actual AI service call
-    // Example: const response = await openai.images.generate({ prompt, style })
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 3000))
-    
-    // Generate placeholder images based on prompt
-    const imageUrls = [
-      `https://picsum.photos/800/600?random=${Date.now()}&text=${encodeURIComponent(prompt.substring(0, 20))}`,
-      `https://picsum.photos/800/600?random=${Date.now() + 1}&text=${encodeURIComponent(prompt.substring(0, 20))}`,
-      `https://picsum.photos/800/600?random=${Date.now() + 2}&text=${encodeURIComponent(prompt.substring(0, 20))}`,
-      `https://picsum.photos/800/600?random=${Date.now() + 3}&text=${encodeURIComponent(prompt.substring(0, 20))}`
-    ]
-    
-    return imageUrls
-  },
-
-  // Save generated image to local storage - MOVE TO BACKEND
-  saveToHistory: (prompt, imageUrl, style) => {
-    const history = JSON.parse(localStorage.getItem('aiGeneratedImages') || '[]')
-    const newEntry = {
-      id: Date.now(),
-      prompt,
-      imageUrl,
-      style,
-      timestamp: new Date().toISOString()
-    }
-    history.unshift(newEntry)
-    // Keep only last 50 generated images
-    const trimmedHistory = history.slice(0, 50)
-    localStorage.setItem('aiGeneratedImages', JSON.stringify(trimmedHistory))
-    return newEntry
-  },
-
-  // Get generation history - MOVE TO BACKEND
-  getHistory: () => {
-    return JSON.parse(localStorage.getItem('aiGeneratedImages') || '[]')
-  },
-
-  // Convert URL to File object for upload
-  urlToFile: async (url, filename) => {
-    const response = await fetch(url)
-    const blob = await response.blob()
-    return new File([blob], filename, { type: blob.type })
-  }
 }
 
 const ImagePreview = ({ file, aspectRatio = "square", className = "" }) => {
@@ -493,6 +448,10 @@ const FacebookPreview = ({ content, hashtags, link, mediaFiles }) => (
           <span className="text-sm">Comment</span>
         </div>
         <div className="flex items-center space-x-2 text-gray-600 hover:text-blue-600 cursor-pointer">
+          <Repeat2 className="w-5 h-5" />
+          <span className="text-sm">Repost</span>
+        </div>
+        <div className="flex items-center space-x-2 text-gray-600 hover:text-blue-600 cursor-pointer">
           <Share className="w-5 h-5" />
           <span className="text-sm">Share</span>
         </div>
@@ -509,6 +468,9 @@ const CreateSocialPost = () => {
   const [aiGenerationModal, setAiGenerationModal] = useState(false)
   const [aiGenerating, setAiGenerating] = useState(false)
   const [aiGeneratedImages, setAiGeneratedImages] = useState([])
+  const [textGenerating, setTextGenerating] = useState(false)
+  const [textGenerationModal, setTextGenerationModal] = useState(false)
+  const [generatedTexts, setGeneratedTexts] = useState([])
   
   const [formData, setFormData] = useState({
     content: '',
@@ -520,12 +482,8 @@ const CreateSocialPost = () => {
     link: ''
   })
 
-  const platforms = [
-    { id: 'facebook', name: 'Facebook', color: 'from-blue-500 to-blue-600' },
-    { id: 'instagram', name: 'Instagram', color: 'from-pink-500 to-purple-600' },
-    { id: 'twitter', name: 'Twitter', color: 'from-blue-400 to-blue-500' },
-    { id: 'linkedin', name: 'LinkedIn', color: 'from-blue-600 to-blue-700' }
-  ]
+  // Get platform configurations from service
+  const platforms = getPlatformConfigs()
 
   // Validation function
   const validateForm = () => {
@@ -547,15 +505,6 @@ const CreateSocialPost = () => {
     
     setValidationErrors(errors)
     return Object.keys(errors).length === 0
-  }
-
-  const isValidUrl = (string) => {
-    try {
-      new URL(string)
-      return true
-    } catch (_) {
-      return false
-    }
   }
 
   const handleInputChange = (field, value) => {
@@ -605,7 +554,7 @@ const CreateSocialPost = () => {
     }))
   }
 
-  // AI Image Generation Functions
+  // Sample Image Generation Functions
   const handleAIGeneration = () => {
     if (!formData.content.trim()) {
       toast.error('Please enter some content first to generate relevant images')
@@ -618,22 +567,17 @@ const CreateSocialPost = () => {
     try {
       setAiGenerating(true)
       
-      // Create a prompt from the post content
-      const prompt = formData.content.trim()
+      const result = await generateSampleImages(formData.content, style)
       
-      // Generate images using AI service
-      const imageUrls = await AIImageService.generateImage(prompt, style)
-      
-      // Save to history
-      imageUrls.forEach(url => {
-        AIImageService.saveToHistory(prompt, url, style)
-      })
-      
-      setAiGeneratedImages(imageUrls)
-      toast.success(`Generated ${imageUrls.length} images based on your content!`)
+      if (result.success) {
+        setAiGeneratedImages(result.data)
+        toast.success(`Generated ${result.data.length} images based on your content!`)
+      } else {
+        throw new Error(result.error)
+      }
       
     } catch (error) {
-      console.error('AI Generation Error:', error)
+      console.error('Sample Generation Error:', error)
       toast.error('Failed to generate images. Please try again.')
     } finally {
       setAiGenerating(false)
@@ -642,9 +586,8 @@ const CreateSocialPost = () => {
 
   const addAIImageToPost = async (imageUrl) => {
     try {
-      // Convert URL to File object
-      const filename = `ai-generated-${Date.now()}.jpg`
-      const file = await AIImageService.urlToFile(imageUrl, filename)
+      const filename = `generated-${Date.now()}.jpg`
+      const file = await urlToFile(imageUrl, filename)
       
       // Add to form data
       setFormData(prev => ({
@@ -652,18 +595,77 @@ const CreateSocialPost = () => {
         mediaFiles: [...prev.mediaFiles, file]
       }))
       
-      toast.success('AI generated image added to your post!')
+      toast.success('Generated image added to your post!')
       setAiGenerationModal(false)
       setAiGeneratedImages([])
       
     } catch (error) {
-      console.error('Error adding AI image:', error)
+      console.error('Error adding sample image:', error)
       toast.error('Failed to add image. Please try again.')
     }
   }
 
-  const loadAIHistory = () => {
-    return AIImageService.getHistory()
+  // Template-based Text Generation Functions
+  const handleTextGeneration = () => {
+    setTextGenerationModal(true)
+  }
+
+  const handleRephrase = async () => {
+    if (!formData.content.trim()) {
+      toast.error('Please enter some content to rephrase')
+      return
+    }
+
+    try {
+      setTextGenerating(true)
+      
+      const result = await rephraseTextContent(formData.content, 'professional')
+      
+      if (result.success) {
+        setGeneratedTexts(result.data)
+        setTextGenerationModal(true)
+        toast.success('Content rephrased successfully!')
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      console.error('Text Rephrase Error:', error)
+      toast.error('Failed to rephrase content. Please try again.')
+    } finally {
+      setTextGenerating(false)
+    }
+  }
+
+  const generateTextContentHandler = async (tone = 'professional') => {
+    try {
+      setTextGenerating(true)
+      
+      const baseContent = formData.content.trim() || 'exciting business update'
+      const result = await generateTextContent(baseContent, tone)
+      
+      if (result.success) {
+        setGeneratedTexts(result.data)
+        toast.success(`Generated ${result.data.length} text variations!`)
+      } else {
+        throw new Error(result.error)
+      }
+      
+    } catch (error) {
+      console.error('Text Generation Error:', error)
+      toast.error('Failed to generate content. Please try again.')
+    } finally {
+      setTextGenerating(false)
+    }
+  }
+
+  const useGeneratedText = (text) => {
+    setFormData(prev => ({
+      ...prev,
+      content: text
+    }))
+    setTextGenerationModal(false)
+    setGeneratedTexts([])
+    toast.success('Text applied to your post!')
   }
 
   const handleSave = async (isDraft = true) => {
@@ -675,45 +677,43 @@ const CreateSocialPost = () => {
         toast.error('Please fix the errors before saving')
         return
       }
-
+      
+      // Determine status based on schedule and isDraft parameter
+      let status = 'draft'
+      if (!isDraft && formData.scheduleDate && formData.scheduleTime) {
+        status = 'scheduled'
+      } else if (!isDraft || (!formData.scheduleDate && !formData.scheduleTime)) {
+        status = 'published' // If no schedule is specified, mark as published
+      }
+      
       // Prepare data for API
       const postData = {
         content: formData.content.trim(),
         platforms: formData.platforms,
-        hashtags: formData.hashtags ? formData.hashtags.split(' ').filter(tag => tag.trim()) : [],
-        link: formData.link || undefined,
-        status: isDraft ? 'draft' : 'scheduled'
+        hashtags: formData.hashtags || '',
+        link: formData.link || '',
+        mediaFiles: formData.mediaFiles,
+        status: status
       }
 
-      // Add scheduling if provided
-      if (formData.scheduleDate && formData.scheduleTime && !isDraft) {
-        postData.scheduledDate = new Date(`${formData.scheduleDate}T${formData.scheduleTime}`)
+      // Add scheduling if provided and not draft
+      if (formData.scheduleDate && formData.scheduleTime && status === 'scheduled') {
+        postData.scheduledDate = new Date(`${formData.scheduleDate}T${formData.scheduleTime}`).toISOString()
       }
 
-      // Call API
-      const response = await apiClient.post('/api/social', postData)
+      // Save to MongoDB via API
+      const result = await savePost(postData)
       
-      if (response.data.success) {
-        toast.success(isDraft ? 'Post saved as draft!' : 'Post scheduled successfully!')
+      if (result.success) {
+        toast.success(result.message || 'Post saved successfully!')
         navigate('/social-media')
       } else {
-        throw new Error(response.data.message || 'Failed to save post')
+        throw new Error(result.error || 'Failed to save post')
       }
       
     } catch (error) {
       console.error('Error saving post:', error)
-      
-      if (error.response?.data?.errors) {
-        // Handle validation errors from backend
-        const backendErrors = {}
-        error.response.data.errors.forEach(err => {
-          backendErrors[err.field] = err.message
-        })
-        setValidationErrors(backendErrors)
-        toast.error('Please fix the validation errors')
-      } else {
-        toast.error(error.response?.data?.message || (isDraft ? 'Failed to save post' : 'Failed to schedule post'))
-      }
+      toast.error('Failed to save post')
     } finally {
       setSaving(false)
     }
@@ -798,7 +798,7 @@ const CreateSocialPost = () => {
               className="bg-cyan-400 hover:bg-cyan-500 text-black px-6 py-2 rounded-xl transition-colors font-medium flex items-center space-x-2 disabled:opacity-50"
             >
               <Send className="w-4 h-4" />
-              <span>{loading ? 'Scheduling...' : 'Schedule Post'}</span>
+              <span>{loading ? 'Publishing...' : 'Publish Post'}</span>
             </button>
           </div>
         </div>
@@ -814,9 +814,35 @@ const CreateSocialPost = () => {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6"
           >
-            <div className="flex items-center space-x-2 mb-4">
-              <Type className="w-5 h-5 text-cyan-400" />
-              <h3 className="text-xl font-light text-white">Post Content</h3>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-2">
+                <Type className="w-5 h-5 text-cyan-400" />
+                <h3 className="text-xl font-light text-white">Post Content</h3>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                {formData.content.trim() && (
+                  <button
+                    onClick={handleRephrase}
+                    disabled={textGenerating}
+                    className="flex items-center space-x-2 px-3 py-2 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/20 rounded-lg text-orange-400 hover:text-orange-300 transition-colors disabled:opacity-50"
+                    title="Rephrase existing content"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${textGenerating ? 'animate-spin' : ''}`} />
+                    <span className="text-sm">Rephrase</span>
+                  </button>
+                )}
+                
+                <button
+                  onClick={handleTextGeneration}
+                  disabled={textGenerating}
+                  className="flex items-center space-x-2 px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded-lg text-purple-400 hover:text-purple-300 transition-colors disabled:opacity-50"
+                  title="Generate content with AI"
+                >
+                  <Wand2 className="w-4 h-4" />
+                  <span className="text-sm">Generate</span>
+                </button>
+              </div>
             </div>
             
             <textarea
@@ -1012,7 +1038,7 @@ const CreateSocialPost = () => {
           >
             <div className="flex items-center space-x-2 mb-4">
               <Calendar className="w-5 h-5 text-cyan-400" />
-              <h3 className="text-xl font-light text-white">Schedule</h3>
+              <h3 className="text-xl font-light text-white">Schedule (Optional)</h3>
             </div>
             
             <div className="space-y-4">
@@ -1035,12 +1061,16 @@ const CreateSocialPost = () => {
                   className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-cyan-400/50 focus:bg-white/10 transition-all"
                 />
               </div>
+              
+              <p className="text-slate-400 text-sm">
+                Leave empty to publish immediately
+              </p>
             </div>
           </motion.div>
         </div>
       </div>
 
-      {/* AI Image Generation Modal */}
+      {/* Sample Image Generation Modal */}
       {aiGenerationModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <motion.div
@@ -1076,8 +1106,8 @@ const CreateSocialPost = () => {
               <h4 className="text-white font-medium mb-4">Style Options:</h4>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {[
-                  { id: 'realistic', name: 'Realistic', desc: 'Photo-realistic images' },
-                  { id: 'artistic', name: 'Artistic', desc: 'Creative and artistic' },
+                  { id: 'realistic', name: 'Business', desc: 'Professional content' },
+                  { id: 'artistic', name: 'Creative', desc: 'Artistic designs' },
                   { id: 'minimal', name: 'Minimal', desc: 'Clean and simple' },
                   { id: 'vibrant', name: 'Vibrant', desc: 'Bright and colorful' }
                 ].map((style) => (
@@ -1130,31 +1160,112 @@ const CreateSocialPost = () => {
               </div>
             )}
 
-            {/* Recent History */}
-            <div className="border-t border-white/10 pt-6">
-              <h4 className="text-white font-medium mb-4">Recent Generations:</h4>
-              <div className="grid grid-cols-3 md:grid-cols-6 gap-3 max-h-32 overflow-y-auto">
-                {loadAIHistory().slice(0, 12).map((item) => (
-                  <div key={item.id} className="relative group">
-                    <img
-                      src={item.imageUrl}
-                      alt={item.prompt}
-                      className="w-full aspect-square object-cover rounded-lg border border-white/10 cursor-pointer"
-                      onClick={() => addAIImageToPost(item.imageUrl)}
-                    />
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
-                      <Download className="w-4 h-4 text-white" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             <div className="mt-6 flex justify-center">
               <button
                 onClick={() => {
                   setAiGenerationModal(false)
                   setAiGeneratedImages([])
+                }}
+                className="bg-slate-600 hover:bg-slate-700 text-white px-6 py-2 rounded-xl transition-colors font-medium"
+              >
+                Close
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Text Generation Modal */}
+      {textGenerationModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
+            className="bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center space-x-3">
+                <Wand2 className="w-6 h-6 text-purple-400" />
+                <h3 className="text-2xl font-light text-white">Generate Text Content</h3>
+              </div>
+              <button
+                onClick={() => {
+                  setTextGenerationModal(false)
+                  setGeneratedTexts([])
+                }}
+                className="p-2 text-slate-400 hover:text-white rounded-lg transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Current Content Preview */}
+            {formData.content && (
+              <div className="mb-6 p-4 bg-white/5 rounded-xl border border-white/10">
+                <h4 className="text-white font-medium mb-2">Current Content:</h4>
+                <p className="text-slate-300 italic">"{formData.content}"</p>
+              </div>
+            )}
+
+            {/* Tone Options */}
+            <div className="mb-6">
+              <h4 className="text-white font-medium mb-4">Tone & Style:</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { id: 'professional', name: 'Professional', desc: 'Business-focused' },
+                  { id: 'casual', name: 'Casual', desc: 'Friendly and relaxed' },
+                  { id: 'engaging', name: 'Engaging', desc: 'Interactive and fun' },
+                  { id: 'inspirational', name: 'Inspirational', desc: 'Motivating and uplifting' }
+                ].map((tone) => (
+                  <button
+                    key={tone.id}
+                    onClick={() => generateTextContentHandler(tone.id)}
+                    disabled={textGenerating}
+                    className="p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-left transition-colors disabled:opacity-50"
+                  >
+                    <div className="text-white font-medium">{tone.name}</div>
+                    <div className="text-slate-400 text-sm">{tone.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Loading State */}
+            {textGenerating && (
+              <div className="text-center py-8">
+                <Loader2 className="w-8 h-8 text-purple-400 animate-spin mx-auto mb-4" />
+                <p className="text-white">Generating content variations...</p>
+                <p className="text-slate-400 text-sm">This may take a few seconds</p>
+              </div>
+            )}
+
+            {/* Generated Text Options */}
+            {generatedTexts.length > 0 && (
+              <div className="space-y-4">
+                <h4 className="text-white font-medium">Generated Content:</h4>
+                {generatedTexts.map((text, index) => (
+                  <div key={index} className="p-4 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-colors group">
+                    <p className="text-white mb-3">{text}</p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400 text-sm">{text.length} characters</span>
+                      <button
+                        onClick={() => useGeneratedText(text)}
+                        className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+                      >
+                        <span>Use This</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={() => {
+                  setTextGenerationModal(false)
+                  setGeneratedTexts([])
                 }}
                 className="bg-slate-600 hover:bg-slate-700 text-white px-6 py-2 rounded-xl transition-colors font-medium"
               >
