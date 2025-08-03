@@ -28,10 +28,16 @@ const CreateClient = () => {
     company: '',
     jobTitle: '',
     website: '',
-    location: '',
     industry: '',
-    status: 'active',
-    priority: 'medium',
+    status: 'Active',
+    priority: 'Medium',
+    address: {
+      street: '',
+      city: '',
+      state: '',
+      country: '',
+      zipCode: ''
+    },
     notes: ''
   })
 
@@ -58,12 +64,21 @@ const CreateClient = () => {
         toast.error('Please enter an email address')
         return
       }
-
-      // Replace with actual API call
-      await new Promise(resolve => setTimeout(resolve, 1000))
       
-      toast.success('Client created successfully!')
-      navigate('/clients')
+      if (!formData.company.trim()) {
+        toast.error('Please enter a company name')
+        return
+      }
+
+      // Call actual API
+      const result = await apiClient.createClient(formData)
+      
+      if (result.success) {
+        toast.success('Client created successfully!')
+        navigate('/clients')
+      } else {
+        toast.error(result.error || 'Failed to create client')
+      }
       
     } catch (error) {
       console.error('Error creating client:', error)
@@ -205,7 +220,7 @@ const CreateClient = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="text-white font-medium mb-2 block">
-                      Company Name
+                      Company Name *
                     </label>
                     <input
                       type="text"
@@ -213,6 +228,7 @@ const CreateClient = () => {
                       onChange={(e) => handleInputChange('company', e.target.value)}
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400/50 focus:bg-white/10 transition-all"
                       placeholder="Acme Corporation"
+                      required
                     />
                   </div>
                   

@@ -18,13 +18,23 @@ export const AuthProvider = ({ children }) => {
   const [userProfile, setUserProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [sessionChecked, setSessionChecked] = useState(false)
+  const [initializationPending, setInitializationPending] = useState(false)
 
   // Initialize auth state
   const initializeAuth = async () => {
+    // Prevent multiple simultaneous initializations
+    if (initializationPending) {
+      return
+    }
+    
+    setInitializationPending(true)
+    
     try {
       const token = getAccessToken()
+      
       if (!token) {
         setLoading(false)
+        setInitializationPending(false)
         return
       }
 
@@ -40,6 +50,7 @@ export const AuthProvider = ({ children }) => {
           console.warn('Token refresh failed during initialization:', refreshError)
           removeTokens()
           setLoading(false)
+          setInitializationPending(false)
           return
         }
       }
@@ -84,6 +95,7 @@ export const AuthProvider = ({ children }) => {
       removeTokens()
     } finally {
       setLoading(false)
+      setInitializationPending(false)
     }
   }
 
@@ -118,12 +130,18 @@ export const AuthProvider = ({ children }) => {
       const errorMessage = error.message || 'Network error. Please check your connection and try again.'
       toast.error(errorMessage)
       return { success: false, error: errorMessage }
+    } finally {
+      // Allow initialization to run again
+      setInitializationPending(false)
     }
   }
 
   // Sign in function
   const signIn = async (email, password) => {
     try {
+      // Prevent initialization during sign-in
+      setInitializationPending(true)
+      
       const result = await apiClient.signIn(email, password)
 
       if (result.success) {
@@ -158,6 +176,11 @@ export const AuthProvider = ({ children }) => {
         }
         
         toast.success('Welcome back!')
+        
+        // Set session as checked and trigger a fresh initialization after sign-in
+        setSessionChecked(true)
+        setLoading(false)
+        
         return { success: true, user: result.user }
       } else {
         const errorMessage = result.error || 'Failed to sign in'
@@ -450,7 +473,15 @@ export const AuthProvider = ({ children }) => {
 
   // Initialize auth on component mount
   useEffect(() => {
-    initializeAuth()
+    // Only initialize if not on sign-in/sign-up pages to prevent race conditions
+    const path = window.location.pathname
+    const isAuthPage = path.includes('/signin') || path.includes('/signup') || path.includes('/verify-otp')
+    
+    if (!isAuthPage) {
+      initializeAuth()
+    } else {
+      setLoading(false)
+    }
   }, [])
 
   const value = {
