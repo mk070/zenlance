@@ -53,9 +53,9 @@ const Leads = () => {
     jobTitle: '',
     industry: '',
     website: '',
-    source: '',
-    status: 'new',
-    priority: 'medium',
+    source: 'Other',
+    status: 'New',
+    priority: 'Medium',
     projectType: '',
     budget: {
       min: '',
@@ -65,7 +65,7 @@ const Leads = () => {
     timeline: {
       startDate: '',
       endDate: '',
-      urgency: 'flexible'
+      urgency: 'Flexible'
     },
     description: '',
     tags: []
@@ -162,33 +162,66 @@ const Leads = () => {
     e.preventDefault()
     try {
       setSaving(true)
+
+      // Validate required fields
+      if (!formData.firstName?.trim()) {
+        toast.error('First name is required')
+        return
+      }
+      if (!formData.lastName?.trim()) {
+        toast.error('Last name is required')
+        return
+      }
+      if (!formData.email?.trim()) {
+        toast.error('Email is required')
+        return
+      }
       
+      // Build clean lead data
       const leadData = {
-        ...formData,
-        budget: {
-          ...formData.budget,
-          min: formData.budget.min ? parseFloat(formData.budget.min) : undefined,
-          max: formData.budget.max ? parseFloat(formData.budget.max) : undefined
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(), 
+        email: formData.email.trim(),
+        source: formData.source || 'Other',
+        status: formData.status || 'New',
+        priority: formData.priority || 'Medium'
+      }
+
+      // Add optional fields only if they have values
+      if (formData.phone?.trim()) leadData.phone = formData.phone.trim()
+      if (formData.company?.trim()) leadData.company = formData.company.trim()
+      if (formData.jobTitle?.trim()) leadData.jobTitle = formData.jobTitle.trim()
+      if (formData.industry?.trim()) leadData.industry = formData.industry.trim()
+      if (formData.projectType?.trim()) leadData.projectType = formData.projectType.trim()
+      if (formData.description?.trim()) leadData.description = formData.description.trim()
+
+      // Add budget if min or max has values
+      if (formData.budget.min || formData.budget.max || formData.budget.currency !== 'USD') {
+        leadData.budget = {}
+        if (formData.budget.min) leadData.budget.min = parseFloat(formData.budget.min)
+        if (formData.budget.max) leadData.budget.max = parseFloat(formData.budget.max) 
+        if (formData.budget.currency && formData.budget.currency !== 'USD') {
+          leadData.budget.currency = formData.budget.currency
         }
       }
 
-      // Ensure required fields have default values
-      if (!leadData.source || leadData.source === '') {
-        leadData.source = 'Other'
-      }
-      if (!leadData.status || leadData.status === '') {
-        leadData.status = 'New'
-      }
-      if (!leadData.priority || leadData.priority === '') {
-        leadData.priority = 'Medium'
+      // Add timeline if any fields have values
+      if (formData.timeline.startDate || formData.timeline.endDate || formData.timeline.urgency !== 'Flexible') {
+        leadData.timeline = {}
+        if (formData.timeline.startDate) leadData.timeline.startDate = formData.timeline.startDate
+        if (formData.timeline.endDate) leadData.timeline.endDate = formData.timeline.endDate
+        if (formData.timeline.urgency && formData.timeline.urgency !== 'Flexible') {
+          leadData.timeline.urgency = formData.timeline.urgency
+        }
       }
 
-      // Remove empty fields (except required ones)
-      Object.keys(leadData).forEach(key => {
-        if (leadData[key] === '' && !['source', 'status', 'priority'].includes(key)) {
-          delete leadData[key]
-        }
-      })
+      // Add tags if any exist
+      if (formData.tags && formData.tags.length > 0) {
+        leadData.tags = formData.tags.filter(tag => tag.trim()).map(tag => tag.trim())
+      }
+
+      // Debug: Log the data being sent
+      console.log('Lead data being sent:', JSON.stringify(leadData, null, 2))
 
       const result = await apiClient.createLead(leadData)
 
@@ -216,7 +249,7 @@ const Leads = () => {
           timeline: {
             startDate: '',
             endDate: '',
-            urgency: 'flexible'
+            urgency: 'Flexible'
           },
           description: '',
           tags: []
@@ -230,7 +263,14 @@ const Leads = () => {
       
       // Show user-friendly error message
       let errorMessage = 'Failed to create lead'
-      if (error.message && error.message !== '[object Object]') {
+      
+      // Handle validation errors specifically
+      if (error.data?.validationErrors && Array.isArray(error.data.validationErrors)) {
+        const validationMessages = error.data.validationErrors.map(err => 
+          `${err.field}: ${err.message}`
+        ).join(', ')
+        errorMessage = `Validation errors: ${validationMessages}`
+      } else if (error.message && error.message !== '[object Object]') {
         errorMessage = error.message
       } else if (error.data?.error) {
         errorMessage = error.data.error
@@ -627,7 +667,7 @@ const Leads = () => {
                       value={formData.phone}
                       onChange={(e) => handleInputChange('phone', e.target.value)}
                       className="w-full px-4 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all"
-                      placeholder="+1 (555) 123-4567"
+                      placeholder="Phone number (minimum 3 characters)"
                     />
                   </div>
                 </div>

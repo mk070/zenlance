@@ -68,7 +68,7 @@ const Quotes = () => {
     { value: 'draft', label: 'Draft' },
     { value: 'sent', label: 'Sent' },
     { value: 'accepted', label: 'Accepted' },
-    { value: 'declined', label: 'Declined' },
+    { value: 'rejected', label: 'Rejected' },
     { value: 'expired', label: 'Expired' }
   ]
 
@@ -197,8 +197,13 @@ const Quotes = () => {
   const handleSaveQuote = async (e) => {
     e.preventDefault()
     
-    if (!formData.title.trim() || !formData.clientId) {
-      toast.error('Title and client are required')
+    if (!formData.title.trim()) {
+      toast.error('Title is required')
+      return
+    }
+    
+    if (!formData.validUntil) {
+      toast.error('Valid until date is required')
       return
     }
     
@@ -730,12 +735,13 @@ const Quotes = () => {
               {/* Additional Fields */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Valid Until</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Valid Until *</label>
                   <input
                     type="date"
                     value={formData.validUntil}
                     onChange={(e) => handleInputChange('validUntil', e.target.value)}
                     className="w-full px-4 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all"
+                    required
                   />
                 </div>
               </div>

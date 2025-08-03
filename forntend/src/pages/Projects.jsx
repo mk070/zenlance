@@ -53,7 +53,7 @@ const Projects = () => {
     name: '',
     description: '',
     clientId: '',
-    status: 'planning',
+    status: 'draft',
     priority: 'medium',
     startDate: '',
     endDate: '',
@@ -65,8 +65,10 @@ const Projects = () => {
 
   const statusOptions = [
     { value: '', label: 'All Statuses' },
-    { value: 'planning', label: 'Planning' },
-    { value: 'active', label: 'Active' },
+    { value: 'draft', label: 'Draft' },
+    { value: 'proposal', label: 'Proposal' },
+    { value: 'contracted', label: 'Contracted' },
+    { value: 'in_progress', label: 'In Progress' },
     { value: 'on_hold', label: 'On Hold' },
     { value: 'completed', label: 'Completed' },
     { value: 'cancelled', label: 'Cancelled' }
@@ -172,6 +174,21 @@ const Projects = () => {
       return
     }
     
+    if (!formData.startDate) {
+      toast.error('Start date is required')
+      return
+    }
+    
+    if (!formData.endDate) {
+      toast.error('End date is required')
+      return  
+    }
+    
+    if (!formData.budget || parseFloat(formData.budget) <= 0) {
+      toast.error('Budget is required and must be greater than 0')
+      return
+    }
+    
     setSaving(true)
     
     try {
@@ -261,9 +278,13 @@ const Projects = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'planning':
+      case 'draft':
+        return 'text-gray-400 bg-gray-400/10 border-gray-400/20'
+      case 'proposal':
         return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20'
-      case 'active':
+      case 'contracted':
+        return 'text-blue-400 bg-blue-400/10 border-blue-400/20'
+      case 'in_progress':
         return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20'
       case 'on_hold':
         return 'text-orange-400 bg-orange-400/10 border-orange-400/20'
@@ -278,7 +299,7 @@ const Projects = () => {
 
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'active':
+      case 'in_progress':
         return <PlayCircle className="w-4 h-4" />
       case 'on_hold':
         return <PauseCircle className="w-4 h-4" />
@@ -539,7 +560,7 @@ const Projects = () => {
 
               <div className="flex items-center space-x-2">
                 {/* Quick Status Toggle */}
-                {project.status === 'active' ? (
+                {project.status === 'in_progress' ? (
                   <button
                     onClick={() => handleUpdateStatus(project._id, 'on_hold')}
                     className="p-2 text-slate-400 hover:text-orange-400 hover:bg-orange-400/10 rounded-lg transition-all duration-200"
@@ -549,7 +570,7 @@ const Projects = () => {
                   </button>
                 ) : project.status === 'on_hold' ? (
                   <button
-                    onClick={() => handleUpdateStatus(project._id, 'active')}
+                    onClick={() => handleUpdateStatus(project._id, 'in_progress')}
                     className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-lg transition-all duration-200"
                     title="Resume Project"
                   >
@@ -722,25 +743,27 @@ const Projects = () => {
               {/* Dates and Budget */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Start Date</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Start Date *</label>
                   <input
                     type="date"
                     value={formData.startDate}
                     onChange={(e) => handleInputChange('startDate', e.target.value)}
                     className="w-full px-4 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all"
+                    required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">End Date</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">End Date *</label>
                   <input
                     type="date"
                     value={formData.endDate}
                     onChange={(e) => handleInputChange('endDate', e.target.value)}
                     className="w-full px-4 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all"
+                    required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Budget</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Budget *</label>
                   <input
                     type="number"
                     value={formData.budget}
@@ -749,6 +772,7 @@ const Projects = () => {
                     placeholder="0.00"
                     min="0"
                     step="0.01"
+                    required
                   />
                 </div>
               </div>

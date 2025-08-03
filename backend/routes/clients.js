@@ -16,7 +16,7 @@ const createClientValidation = [
   body('firstName').notEmpty().withMessage('First name is required').isLength({ max: 50 }),
   body('lastName').notEmpty().withMessage('Last name is required').isLength({ max: 50 }),
   body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
-  body('phone').optional().matches(/^[\+]?[0-9\s\-\(\)]{10,}$/).withMessage('Invalid phone number'),
+  body('phone').optional().matches(/^[\+]?[0-9\s\-\(\)]{3,}$/).withMessage('Phone number must be at least 3 characters'),
   body('company').notEmpty().withMessage('Company name is required').isLength({ max: 100 }),
   body('jobTitle').optional().isLength({ max: 80 }),
   body('industry').optional().isIn([

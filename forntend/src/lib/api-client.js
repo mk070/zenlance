@@ -74,6 +74,11 @@ class ApiClient {
       
       // If response is not ok, throw an error with the parsed data
       if (!response.ok) {
+        // Debug: Log validation errors
+        if (response.status === 400) {
+          console.error('400 Bad Request - Full response:', data)
+        }
+        
         const errorMessage = data.error || data.message || `HTTP ${response.status}`;
         const error = new Error(errorMessage);
         error.status = response.status;

@@ -28,8 +28,8 @@ const clientSchema = new mongoose.Schema({
     type: String,
     trim: true,
     match: [
-      /^[\+]?[0-9\s\-\(\)]{10,}$/,
-      'Please enter a valid phone number'
+      /^[\+]?[0-9\s\-\(\)]{3,}$/,
+      'Phone number must be at least 3 characters'
     ]
   },
   
