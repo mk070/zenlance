@@ -27,6 +27,12 @@ import {
   RefreshCw,
   Wand2
 } from 'lucide-react'
+import { 
+  Facebook as FacebookIcon, 
+  Instagram as InstagramIcon, 
+  Twitter as TwitterIcon, 
+  LinkedIn as LinkedInIcon 
+} from '@mui/icons-material'
 import toast from 'react-hot-toast'
 import { 
   savePost,
@@ -37,6 +43,22 @@ import {
   isValidUrl,
   getPlatformConfigs
 } from '../lib/social-api-client'
+
+// Helper function to get platform icon
+const getPlatformIcon = (platform, size = 16) => {
+  switch (platform) {
+    case 'facebook':
+      return <FacebookIcon sx={{ fontSize: size, color: '#06b6d4' }} />
+    case 'instagram':
+      return <InstagramIcon sx={{ fontSize: size, color: '#06b6d4' }} />
+    case 'twitter':
+      return <TwitterIcon sx={{ fontSize: size, color: '#06b6d4' }} />
+    case 'linkedin':
+      return <LinkedInIcon sx={{ fontSize: size, color: '#06b6d4' }} />
+    default:
+      return platform.substring(0, 1).toUpperCase()
+  }
+}
 
 // Image processing utilities
 const createImagePreview = (file) => {
@@ -1012,11 +1034,9 @@ const CreateSocialPost = () => {
                     onChange={() => handlePlatformToggle(platform.id)}
                     className="w-5 h-5 text-cyan-400 bg-transparent border border-white/20 rounded focus:ring-cyan-400 focus:ring-2"
                   />
-                  <div className={`w-8 h-8 rounded-lg bg-gradient-to-r ${platform.color} flex items-center justify-center`}>
-                    <span className="text-white text-xs font-bold">
-                      {platform.name.substring(0, 2).toUpperCase()}
-                    </span>
-                  </div>
+                                  <div className={`w-8 h-8 rounded-lg bg-slate-700/50 flex items-center justify-center`}>
+                  {getPlatformIcon(platform.id, 20)}
+                </div>
                   <span className="text-white group-hover:text-cyan-300 transition-colors">
                     {platform.name}
                   </span>
@@ -1306,11 +1326,9 @@ const CreateSocialPost = () => {
                   return (
                     <div key={platform}>
                       <h4 className="text-lg font-medium text-white mb-4 flex items-center space-x-2">
-                        <div className={`w-6 h-6 rounded bg-gradient-to-r ${platforms.find(p => p.id === platform)?.color} flex items-center justify-center`}>
-                          <span className="text-white text-xs font-bold">
-                            {platformName.substring(0, 1).toUpperCase()}
-                          </span>
-                        </div>
+                                        <div className={`w-6 h-6 rounded bg-slate-700/50 flex items-center justify-center`}>
+                  {getPlatformIcon(platform, 16)}
+                </div>
                         <span>{platformName} Preview</span>
                       </h4>
                       <div className="flex justify-center">

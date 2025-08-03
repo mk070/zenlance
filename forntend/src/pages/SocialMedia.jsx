@@ -22,6 +22,12 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react'
+import { 
+  Facebook as FacebookIcon, 
+  Instagram as InstagramIcon, 
+  Twitter as TwitterIcon, 
+  LinkedIn as LinkedInIcon 
+} from '@mui/icons-material'
 import toast from 'react-hot-toast'
 import { 
   getFilteredPosts, 
@@ -33,6 +39,22 @@ import {
   getStatusColor,
   formatDate
 } from '../lib/social-api-client'
+
+// Helper function to get platform icon
+const getPlatformIcon = (platform) => {
+  switch (platform) {
+    case 'facebook':
+      return <FacebookIcon sx={{ fontSize: 16, color: '#06b6d4' }} />
+    case 'instagram':
+      return <InstagramIcon sx={{ fontSize: 16, color: '#06b6d4' }} />
+    case 'twitter':
+      return <TwitterIcon sx={{ fontSize: 16, color: '#06b6d4' }} />
+    case 'linkedin':
+      return <LinkedInIcon sx={{ fontSize: 16, color: '#06b6d4' }} />
+    default:
+      return platform.substring(0, 1).toUpperCase()
+  }
+}
 
 const SocialMedia = () => {
   const navigate = useNavigate()
@@ -201,7 +223,7 @@ const SocialMedia = () => {
       >
         <div>
           <h1 className="text-3xl font-light text-white mb-2 flex items-center space-x-3">
-            <Share2 className="w-8 h-8 text-cyan-400" />
+            <TrendingUp className="w-8 h-8 text-cyan-400" />
             <span>Social Media</span>
           </h1>
           <p className="text-slate-400 font-light">
@@ -274,10 +296,8 @@ const SocialMedia = () => {
               className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 hover:bg-white/10 transition-all duration-200"
             >
               <div className="flex items-center justify-between mb-2">
-                <div className={`w-8 h-8 rounded-lg bg-gradient-to-r ${getPlatformColor(account.platform)} flex items-center justify-center`}>
-                  <span className="text-white text-xs font-bold">
-                    {account.platform.substring(0, 2).toUpperCase()}
-                  </span>
+                <div className={`w-8 h-8 rounded-lg bg-slate-700/50 flex items-center justify-center`}>
+                  {getPlatformIcon(account.platform)}
                 </div>
                 <span className="text-emerald-400 text-xs font-medium">
                   {account.status === 'connected' ? 'Connected' : 'Disconnected'}
@@ -403,16 +423,14 @@ const SocialMedia = () => {
                           </div>
                           
                           <div className="flex items-center space-x-2">
-                            {post.platforms.map((platform) => (
-                              <div
-                                key={platform}
-                                className={`w-6 h-6 rounded bg-gradient-to-r ${getPlatformColor(platform)} flex items-center justify-center`}
-                              >
-                                <span className="text-white text-xs font-bold">
-                                  {platform.substring(0, 1).toUpperCase()}
-                                </span>
-                              </div>
-                            ))}
+                                              {post.platforms.map((platform) => (
+                    <div
+                      key={platform}
+                      className={`w-6 h-6 rounded bg-slate-700/50 flex items-center justify-center`}
+                    >
+                      {getPlatformIcon(platform)}
+                    </div>
+                  ))}
                           </div>
                         </div>
                         
