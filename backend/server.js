@@ -22,7 +22,7 @@ console.log('- PORT:', process.env.PORT);
 console.log('- MONGODB_URI:', process.env.MONGODB_URI ? 'Set' : 'Not set');
 console.log('- JWT_SECRET:', process.env.JWT_SECRET ? 'Set' : 'Not set');
 
-let authRoutes, userRoutes, profileRoutes, leadsRoutes, clientsRoutes, invoicesRoutes, quotesRoutes, projectsRoutes, socialRoutes, errorHandler, notFound, logger;
+let authRoutes, userRoutes, profileRoutes, leadsRoutes, clientsRoutes, invoicesRoutes, quotesRoutes, projectsRoutes, proposalsRoutes, socialRoutes, publicRoutes, testOpenaiRoutes, errorHandler, notFound, logger, testAzureOpenAIConnection, displayStartupSuccess, displayStartupFailure;
 
 try {
   console.log('🔍 Loading route modules...');
@@ -64,6 +64,17 @@ try {
   socialRoutes = socialModule.default;
   console.log('✅ Social routes loaded');
   
+  const proposalsModule = await import('./routes/proposals.js');
+  proposalsRoutes = proposalsModule.default;
+  console.log('✅ Proposals routes loaded');
+  
+  const publicModule = await import('./routes/public.js');
+  publicRoutes = publicModule.default;
+  console.log('✅ Public routes loaded');
+  
+  // Skip test OpenAI routes (not needed in sample mode)
+  console.log('⚡ Skipping test OpenAI routes - using sample data mode');
+  
   // Import middleware
   console.log('🔍 Loading middleware...');
   const errorModule = await import('./middleware/errorMiddleware.js');
@@ -74,6 +85,15 @@ try {
   const loggerModule = await import('./utils/logger.js');
   logger = loggerModule.logger;
   console.log('✅ Logger loaded');
+  
+  // Skip Azure OpenAI test utility (using sample data)
+  console.log('⚡ Skipping Azure OpenAI test utility - using sample data mode');
+  
+  // Import startup messages
+  const startupModule = await import('./utils/startupMessage.js');
+  displayStartupSuccess = startupModule.displayStartupSuccess;
+  displayStartupFailure = startupModule.displayStartupFailure;
+  console.log('✅ Startup message utility loaded');
   
 } catch (error) {
   console.error('❌ Error loading modules:', error);
@@ -255,8 +275,15 @@ try {
   app.use('/api/projects', projectsRoutes);
   console.log('✅ Projects routes mounted');
   
+  app.use('/api/proposals', proposalsRoutes);
+  console.log('✅ Proposals routes mounted');
+  
   app.use('/api/social', socialRoutes);
   console.log('✅ Social routes mounted');
+  
+  // Public routes (no authentication required)
+  app.use('/api/public', publicRoutes);
+  console.log('✅ Public routes mounted');
 } catch (error) {
   console.error('❌ Error mounting routes:', error);
   console.error('Error details:', error.message);
@@ -273,23 +300,31 @@ app.use(errorHandler);
 process.on('SIGTERM', () => {
   console.log('🔍 SIGTERM received. Shutting down gracefully...');
   logger.info('SIGTERM received. Shutting down gracefully...');
-  server.close(() => {
-    logger.info('Process terminated');
-    mongoose.connection.close(false, () => {
-      process.exit(0);
+  if (server) {
+    server.close(() => {
+      logger.info('Process terminated');
+      mongoose.connection.close(false, () => {
+        process.exit(0);
+      });
     });
-  });
+  } else {
+    process.exit(0);
+  }
 });
 
 process.on('SIGINT', () => {
   console.log('🔍 SIGINT received. Shutting down gracefully...');
   logger.info('SIGINT received. Shutting down gracefully...');
-  server.close(() => {
-    logger.info('Process terminated');
-    mongoose.connection.close(false, () => {
-      process.exit(0);
+  if (server) {
+    server.close(() => {
+      logger.info('Process terminated');
+      mongoose.connection.close(false, () => {
+        process.exit(0);
+      });
     });
-  });
+  } else {
+    process.exit(0);
+  }
 });
 
 // Handle uncaught exceptions
@@ -308,11 +343,39 @@ process.on('unhandledRejection', (err) => {
   process.exit(1);
 });
 
-console.log('🔍 Starting server...');
-const server = app.listen(PORT, () => {
-  console.log(`✅ Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
-  console.log(`🌐 Health check: http://localhost:${PORT}/api/health`);
-  logger.info(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
-});
+// Start server function (no OpenAI testing)
+async function startServer() {
+  try {
+    console.log('⚡ Starting server in sample data mode (no OpenAI API required)...');
+    console.log('🔍 Starting server...');
+    const server = app.listen(PORT, () => {
+      console.log(`✅ Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+      console.log(`🌐 Health check: http://localhost:${PORT}/api/health`);
+      console.log('⚡ Using sample proposal data - no OpenAI API connection needed');
+      logger.info(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+      
+      // Display success message
+      displayStartupSuccess();
+    });
+
+    return server;
+  } catch (error) {
+    displayStartupFailure(`Server failed to start: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+// Start the server
+let server;
+try {
+  server = await startServer();
+} catch (error) {
+  if (displayStartupFailure) {
+    displayStartupFailure(`Server failed to start: ${error.message}`);
+  } else {
+    console.log('❌ CRITICAL: Server failed to start:', error.message);
+  }
+  process.exit(1);
+}
 
 export default app; 

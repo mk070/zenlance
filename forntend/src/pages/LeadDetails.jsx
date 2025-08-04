@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { useParams, useNavigate } from 'react-router-dom'
 import { 
@@ -22,10 +22,18 @@ import {
   Clock,
   AlertCircle,
   Trash2,
-  UserCheck
+  UserCheck,
+  FileText,
+  Wand2,
+  Eye,
+  Download,
+  Send,
+  FolderPlus
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import apiClient from '../lib/api-client'
+import ProposalModal from '../components/ProposalModal'
+import ProjectConversionModal from '../components/ProjectConversionModal'
 
 const LeadDetails = () => {
   const { id } = useParams()
@@ -37,6 +45,39 @@ const LeadDetails = () => {
   const [showNoteForm, setShowNoteForm] = useState(false)
   const [noteText, setNoteText] = useState('')
   
+  // Proposal state
+  const [proposals, setProposals] = useState([])
+  const [showProposalModal, setShowProposalModal] = useState(false)
+  const [loadingProposals, setLoadingProposals] = useState(false)
+  const [sendingProposal, setSendingProposal] = useState(null) // Track which proposal is being sent
+
+  // Project conversion state
+  const [showProjectModal, setShowProjectModal] = useState(false)
+
+  // Define loadProposals function that can be reused
+  const loadProposals = useCallback(async () => {
+    if (!id) return
+    
+    try {
+      setLoadingProposals(true)
+      const result = await apiClient.getLeadProposals(id)
+      if (result.success) {
+        setProposals(result.data.proposals || [])
+      }
+    } catch (error) {
+      console.error('Error loading proposals:', error)
+    } finally {
+      setLoadingProposals(false)
+    }
+  }, [id])
+
+  // Load proposals for this lead
+  useEffect(() => {
+    if (id) {
+      loadProposals()
+    }
+  }, [id, loadProposals])
+
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -124,6 +165,92 @@ const LeadDetails = () => {
     }
   }, [id, navigate])
 
+  // Proposal handling functions
+  const handleGenerateProposal = async () => {
+    if (!lead) return;
+    
+    // Show the modal instead of directly generating
+    setShowProposalModal(true);
+  }
+
+  const handleProposalGenerated = async (proposal) => {
+    // Add the new proposal to the list
+    setProposals(prev => [proposal, ...prev])
+    
+    // Close the modal
+    setShowProposalModal(false)
+    
+    // Reload proposals to ensure we have the latest data
+    await loadProposals()
+  }
+
+  const handleProposalModalClose = () => {
+    setShowProposalModal(false)
+  }
+
+  const handleViewProposal = async (proposalId) => {
+    try {
+      await apiClient.viewProposal(proposalId);
+    } catch (error) {
+      console.error('Error viewing proposal:', error);
+      toast.error('Failed to view proposal');
+    }
+  }
+
+  const handleDownloadProposal = async (proposal) => {
+    try {
+      console.log('🔍 Downloading proposal:', proposal._id);
+      const blob = await apiClient.downloadProposal(proposal._id);
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `${proposal.title || 'proposal'}-${proposal.proposalNumber}.pdf`;
+      
+      document.body.appendChild(a);
+      a.click();
+      
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      console.log('✅ Proposal downloaded successfully');
+      toast.success('Proposal downloaded successfully');
+    } catch (error) {
+      console.error('❌ Error downloading proposal:', error);
+      toast.error('Failed to download proposal');
+    }
+  }
+
+  const handleSendProposal = async (proposal) => {
+    try {
+      setSendingProposal(proposal._id) // Set loading state for this specific proposal
+      const result = await apiClient.sendProposal(proposal._id, {
+        subject: `Proposal from Zenlancer - ${proposal.title}`,
+        message: `Dear ${lead?.firstName},\n\nI'm pleased to share a comprehensive proposal for your project.\n\nPlease review the attached proposal and feel free to reach out with any questions.\n\nBest regards,\nZenlancer Team`
+      })
+
+      if (result.success) {
+        toast.success('Proposal sent successfully!')
+        // Update the proposal status in the list
+        setProposals(prev => 
+          prev.map(p => 
+            p._id === proposal._id 
+              ? { ...p, status: 'sent', sentDate: new Date() }
+              : p
+          )
+        )
+      } else {
+        toast.error(result.error || 'Failed to send proposal')
+      }
+    } catch (error) {
+      console.error('Error sending proposal:', error)
+      toast.error('Failed to send proposal')
+    } finally {
+      setSendingProposal(null) // Clear loading state
+    }
+  }
+
   const handleInputChange = (field, value) => {
     if (field.includes('.')) {
       const [parent, child] = field.split('.')
@@ -208,6 +335,22 @@ const LeadDetails = () => {
       toast.error('Failed to convert lead')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleConvertToProject = () => {
+    console.log('🎯 Opening project conversion modal')
+    setShowProjectModal(true)
+  }
+
+  const handleProjectCreated = (project) => {
+    console.log('🎉 Project created successfully:', project)
+    
+    // Navigate to the new project
+    if (project && project._id) {
+      navigate(`/projects/${project._id}`)
+    } else {
+      navigate('/projects')
     }
   }
 
@@ -326,16 +469,28 @@ const LeadDetails = () => {
             
             <div className="flex items-center space-x-3">
               {lead.status !== 'closed_won' && (
-                <motion.button
-                  onClick={handleConvertToClient}
-                  disabled={saving}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="flex items-center space-x-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl hover:bg-emerald-500/30 transition-all duration-200 disabled:opacity-50"
-                >
-                  <UserCheck className="w-4 h-4" />
-                  <span>Convert to Client</span>
-                </motion.button>
+                <>
+                  <motion.button
+                    onClick={handleConvertToProject}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="flex items-center space-x-2 px-4 py-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-xl hover:bg-blue-500/30 transition-all duration-200"
+                  >
+                    <FolderPlus className="w-4 h-4" />
+                    <span>Convert to Project</span>
+                  </motion.button>
+                  
+                  <motion.button
+                    onClick={handleConvertToClient}
+                    disabled={saving}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="flex items-center space-x-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl hover:bg-emerald-500/30 transition-all duration-200 disabled:opacity-50"
+                  >
+                    <UserCheck className="w-4 h-4" />
+                    <span>Convert to Client</span>
+                  </motion.button>
+                </>
               )}
               
               {!isEditing ? (
@@ -417,7 +572,7 @@ const LeadDetails = () => {
                     <p className="text-white">{lead.lastName || '-'}</p>
                   )}
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1">Email</label>
                   {isEditing ? (
@@ -428,15 +583,10 @@ const LeadDetails = () => {
                       className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-white/20"
                     />
                   ) : (
-                    <div className="flex items-center space-x-2">
-                      <Mail className="w-4 h-4 text-slate-400" />
-                      <a href={`mailto:${lead.email}`} className="text-blue-400 hover:text-blue-300">
-                        {lead.email || '-'}
-                      </a>
-                    </div>
+                    <p className="text-white">{lead.email || '-'}</p>
                   )}
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1">Phone</label>
                   {isEditing ? (
@@ -447,25 +597,10 @@ const LeadDetails = () => {
                       className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-white/20"
                     />
                   ) : (
-                    <div className="flex items-center space-x-2">
-                      <Phone className="w-4 h-4 text-slate-400" />
-                      <a href={`tel:${lead.phone}`} className="text-blue-400 hover:text-blue-300">
-                        {lead.phone || '-'}
-                      </a>
-                    </div>
+                    <p className="text-white">{lead.phone || '-'}</p>
                   )}
                 </div>
-              </div>
-            </div>
 
-            {/* Business Information */}
-            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-              <h3 className="text-lg font-medium text-white mb-4 flex items-center">
-                <Building2 className="w-5 h-5 mr-2" />
-                Business Information
-              </h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1">Company</label>
                   {isEditing ? (
@@ -479,7 +614,7 @@ const LeadDetails = () => {
                     <p className="text-white">{lead.company || '-'}</p>
                   )}
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1">Job Title</label>
                   {isEditing ? (
@@ -493,7 +628,7 @@ const LeadDetails = () => {
                     <p className="text-white">{lead.jobTitle || '-'}</p>
                   )}
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1">Industry</label>
                   {isEditing ? (
@@ -507,7 +642,7 @@ const LeadDetails = () => {
                     <p className="text-white">{lead.industry || '-'}</p>
                   )}
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1">Website</label>
                   {isEditing ? (
@@ -518,20 +653,7 @@ const LeadDetails = () => {
                       className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-white/20"
                     />
                   ) : (
-                    <div className="flex items-center space-x-2">
-                      {lead.website ? (
-                        <a 
-                          href={lead.website} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-blue-400 hover:text-blue-300"
-                        >
-                          {lead.website}
-                        </a>
-                      ) : (
-                        <span className="text-white">-</span>
-                      )}
-                    </div>
+                    <p className="text-white">{lead.website || '-'}</p>
                   )}
                 </div>
               </div>
@@ -546,61 +668,161 @@ const LeadDetails = () => {
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Budget Range</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Project Description</label>
                   {isEditing ? (
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="number"
-                        value={formData.budget.min}
-                        onChange={(e) => handleInputChange('budget.min', parseInt(e.target.value) || 0)}
-                        placeholder="Min"
-                        className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-white/20"
-                      />
-                      <span className="text-slate-400">-</span>
-                      <input
-                        type="number"
-                        value={formData.budget.max}
-                        onChange={(e) => handleInputChange('budget.max', parseInt(e.target.value) || 0)}
-                        placeholder="Max"
-                        className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-white/20"
-                      />
-                    </div>
+                    <textarea
+                      value={formData.description}
+                      onChange={(e) => handleInputChange('description', e.target.value)}
+                      rows={3}
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-white/20"
+                    />
                   ) : (
-                    <div className="flex items-center space-x-2">
-                      <DollarSign className="w-4 h-4 text-slate-400" />
-                      <span className="text-white">
-                        {lead.budget?.min && lead.budget?.max 
-                          ? `$${lead.budget.min.toLocaleString()} - $${lead.budget.max.toLocaleString()}`
-                          : '-'
-                        }
-                      </span>
-                    </div>
+                    <p className="text-white">{lead.description || '-'}</p>
                   )}
                 </div>
-                
+
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Timeline</label>
-                  {isEditing ? (
-                    <select
-                      value={formData.timeline.urgency}
-                      onChange={(e) => handleInputChange('timeline.urgency', e.target.value)}
-                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-white/20"
-                    >
-                      <option value="low">Flexible (3+ months)</option>
-                      <option value="medium">Moderate (1-3 months)</option>
-                      <option value="high">Urgent (&lt; 1 month)</option>
-                      <option value="immediate">Immediate (ASAP)</option>
-                    </select>
-                  ) : (
-                    <div className="flex items-center space-x-2">
-                      <Calendar className="w-4 h-4 text-slate-400" />
-                      <span className="text-white">
-                        {lead.timeline?.urgency ? 
-                          lead.timeline.urgency.charAt(0).toUpperCase() + lead.timeline.urgency.slice(1)
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Budget Range</label>
+                  <div className="flex space-x-2">
+                    {isEditing ? (
+                      <>
+                        <input
+                          type="number"
+                          placeholder="Min"
+                          value={formData.budget.min}
+                          onChange={(e) => handleInputChange('budget.min', parseInt(e.target.value) || 0)}
+                          className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-white/20"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Max"
+                          value={formData.budget.max}
+                          onChange={(e) => handleInputChange('budget.max', parseInt(e.target.value) || 0)}
+                          className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-white/20"
+                        />
+                      </>
+                    ) : (
+                      <p className="text-white">
+                        {lead.budget?.min || lead.budget?.max 
+                          ? `$${lead.budget?.min?.toLocaleString() || '0'} - $${lead.budget?.max?.toLocaleString() || '0'} ${lead.budget?.currency || 'USD'}`
                           : '-'
                         }
-                      </span>
-                    </div>
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Timeline</label>
+                  <div className="space-y-2">
+                    {isEditing ? (
+                      <>
+                        <input
+                          type="date"
+                          placeholder="Start Date"
+                          value={formData.timeline.startDate}
+                          onChange={(e) => handleInputChange('timeline.startDate', e.target.value)}
+                          className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-white/20"
+                        />
+                        <input
+                          type="date"
+                          placeholder="End Date"
+                          value={formData.timeline.endDate}
+                          onChange={(e) => handleInputChange('timeline.endDate', e.target.value)}
+                          className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-white/20"
+                        />
+                      </>
+                    ) : (
+                      <div>
+                        <p className="text-white text-sm">
+                          Start: {lead.timeline?.startDate ? new Date(lead.timeline.startDate).toLocaleDateString() : 'Not set'}
+                        </p>
+                        <p className="text-white text-sm">
+                          End: {lead.timeline?.endDate ? new Date(lead.timeline.endDate).toLocaleDateString() : 'Not set'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Priority</label>
+                  {isEditing ? (
+                    <select
+                      value={formData.priority}
+                      onChange={(e) => handleInputChange('priority', e.target.value)}
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-white/20"
+                    >
+                      <option value="">Select Priority</option>
+                      {priorityOptions.map(option => (
+                        <option key={option.value} value={option.value} className="bg-slate-800">
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                      lead.priority === 'high' ? 'bg-red-100 text-red-800' :
+                      lead.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                      lead.priority === 'low' ? 'bg-green-100 text-green-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {lead.priority?.charAt(0).toUpperCase() + lead.priority?.slice(1) || 'Not set'}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Status & Source */}
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+              <h3 className="text-lg font-medium text-white mb-4 flex items-center">
+                <Star className="w-5 h-5 mr-2" />
+                Status & Source
+              </h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Status</label>
+                  {isEditing ? (
+                    <select
+                      value={formData.status}
+                      onChange={(e) => handleInputChange('status', e.target.value)}
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-white/20"
+                    >
+                      <option value="">Select Status</option>
+                      {statusOptions.map(option => (
+                        <option key={option.value} value={option.value} className="bg-slate-800">
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                      lead.status === 'qualified' ? 'bg-green-100 text-green-800' :
+                      lead.status === 'contacted' ? 'bg-blue-100 text-blue-800' :
+                      lead.status === 'proposal' ? 'bg-purple-100 text-purple-800' :
+                      lead.status === 'negotiation' ? 'bg-yellow-100 text-yellow-800' :
+                      lead.status === 'won' ? 'bg-green-100 text-green-800' :
+                      lead.status === 'lost' ? 'bg-red-100 text-red-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {lead.status?.charAt(0).toUpperCase() + lead.status?.slice(1) || 'Not set'}
+                    </span>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Source</label>
+                  {isEditing ? (
+                    <input
+                      type="text"
+                      value={formData.source}
+                      onChange={(e) => handleInputChange('source', e.target.value)}
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-white/20"
+                    />
+                  ) : (
+                    <p className="text-white">{lead.source || '-'}</p>
                   )}
                 </div>
               </div>
@@ -609,98 +831,93 @@ const LeadDetails = () => {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Status & Priority */}
-            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-              <h3 className="text-lg font-medium text-white mb-4">Status & Priority</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Status</label>
-                  {isEditing ? (
-                    <select
-                      value={formData.status}
-                      onChange={(e) => handleInputChange('status', e.target.value)}
-                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-white/20"
-                    >
-                      {statusOptions.map(option => (
-                        <option key={option.value} value={option.value} className="bg-gray-800">
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(lead.status)}`}>
-                      {statusOptions.find(opt => opt.value === lead.status)?.label || lead.status}
-                    </span>
-                  )}
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Priority</label>
-                  {isEditing ? (
-                    <select
-                      value={formData.priority}
-                      onChange={(e) => handleInputChange('priority', e.target.value)}
-                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-white/20"
-                    >
-                      {priorityOptions.map(option => (
-                        <option key={option.value} value={option.value} className="bg-gray-800">
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <span className={`text-sm font-medium ${getPriorityColor(lead.priority)}`}>
-                      {priorityOptions.find(opt => opt.value === lead.priority)?.label || lead.priority}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Notes & Activity */}
+            {/* Quick Actions */}
             <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-white">Notes & Activity</h3>
+                <h3 className="text-lg font-medium text-white">Quick Actions</h3>
                 <button
-                  onClick={() => setShowNoteForm(true)}
-                  className="p-2 hover:bg-white/10 rounded-lg transition-colors text-slate-400 hover:text-white"
+                  onClick={() => setIsEditing(!isEditing)}
+                  className="flex items-center space-x-1 px-3 py-1 bg-white/10 text-slate-300 rounded-lg hover:bg-white/20 transition-all text-sm"
+                >
+                  {isEditing ? <Save className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
+                  <span>{isEditing ? 'Save' : 'Edit'}</span>
+                </button>
+              </div>
+              
+              {isEditing && (
+                <div className="space-y-3 mb-4">
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="w-full flex items-center space-x-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl hover:bg-emerald-500/30 transition-all duration-200 disabled:opacity-50"
+                  >
+                    {saving ? (
+                      <div className="w-4 h-4 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin"></div>
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    <span>Save Changes</span>
+                  </button>
+                  
+                  <button
+                    onClick={() => setIsEditing(false)}
+                    className="w-full flex items-center space-x-2 px-4 py-2 bg-white/10 text-slate-300 rounded-xl hover:bg-white/20 transition-all duration-200"
+                  >
+                    <X className="w-4 h-4" />
+                    <span>Cancel</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Notes */}
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-white flex items-center">
+                  <MessageCircle className="w-5 h-5 mr-2" />
+                  Notes
+                </h3>
+                <button
+                  onClick={() => setShowNoteForm(!showNoteForm)}
+                  className="flex items-center space-x-1 px-3 py-1 bg-white/10 text-slate-300 rounded-lg hover:bg-white/20 transition-all text-sm"
                 >
                   <Plus className="w-4 h-4" />
+                  <span>Add</span>
                 </button>
               </div>
               
               {showNoteForm && (
-                <div className="mb-4 p-4 bg-white/5 border border-white/10 rounded-xl">
+                <div className="mb-4 space-y-3">
                   <textarea
                     value={noteText}
                     onChange={(e) => setNoteText(e.target.value)}
                     placeholder="Add a note..."
                     rows={3}
-                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-white/20 resize-none mb-3"
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-white/20"
                   />
-                  <div className="flex items-center justify-end space-x-2">
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={handleAddNote}
+                      className="flex items-center space-x-1 px-3 py-1 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-500/30 transition-all text-sm"
+                    >
+                      <Save className="w-3 h-3" />
+                      <span>Save</span>
+                    </button>
                     <button
                       onClick={() => {
                         setShowNoteForm(false)
                         setNoteText('')
                       }}
-                      className="px-3 py-1 text-slate-400 hover:text-white transition-colors"
+                      className="flex items-center space-x-1 px-3 py-1 bg-white/10 text-slate-300 rounded-lg hover:bg-white/20 transition-all text-sm"
                     >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleAddNote}
-                      disabled={!noteText.trim()}
-                      className="px-3 py-1 bg-white text-black font-medium rounded-lg hover:bg-white/90 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Add Note
+                      <X className="w-3 h-3" />
+                      <span>Cancel</span>
                     </button>
                   </div>
                 </div>
               )}
               
-              <div className="space-y-3 max-h-64 overflow-y-auto">
+              <div className="space-y-3 max-h-48 overflow-y-auto">
                 {lead.notes && lead.notes.length > 0 ? (
                   lead.notes.map((note, index) => (
                     <div key={index} className="p-3 bg-white/5 border border-white/10 rounded-lg">
@@ -716,6 +933,107 @@ const LeadDetails = () => {
               </div>
             </div>
 
+            {/* Compact Proposals Section */}
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-md font-medium text-white flex items-center">
+                  <FileText className="w-4 h-4 mr-2" />
+                  Proposals
+                </h3>
+              </div>
+              
+              {loadingProposals ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                </div>
+              ) : proposals.length > 0 ? (
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {proposals.map((proposal) => (
+                    <div key={proposal._id} className="p-3 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-all duration-200">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-medium text-white text-sm truncate">{proposal.title}</h4>
+                          <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
+                            <span>#{proposal.proposalNumber}</span>
+                            {proposal.content?.investment?.totalAmount && (
+                              <span className="text-green-400 font-medium">
+                                ${proposal.content.investment.totalAmount.toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          proposal.status === 'generated' ? 'bg-blue-400/20 text-blue-400' :
+                          proposal.status === 'sent' ? 'bg-emerald-400/20 text-emerald-400' :
+                          proposal.status === 'viewed' ? 'bg-yellow-400/20 text-yellow-400' :
+                          proposal.status === 'accepted' ? 'bg-green-400/20 text-green-400' :
+                          proposal.status === 'rejected' ? 'bg-red-400/20 text-red-400' :
+                          'bg-slate-400/20 text-slate-400'
+                        }`}>
+                          {proposal.status.charAt(0).toUpperCase() + proposal.status.slice(1)}
+                        </span>
+                      </div>
+                      
+                      {/* Compact Action Buttons */}
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={() => handleViewProposal(proposal._id)}
+                          className="flex items-center space-x-1 px-2 py-1 bg-white/10 text-slate-300 rounded text-xs hover:bg-white/20 transition-all flex-1 justify-center"
+                        >
+                          <Eye className="w-3 h-3" />
+                          <span>View</span>
+                        </button>
+                        
+                        <button
+                          onClick={() => handleDownloadProposal(proposal)}
+                          className="flex items-center space-x-1 px-2 py-1 bg-white/10 text-slate-300 rounded text-xs hover:bg-white/20 transition-all flex-1 justify-center"
+                        >
+                          <Download className="w-3 h-3" />
+                          <span>Download</span>
+                        </button>
+                        
+                        {proposal.status === 'generated' && (
+                          <button
+                            onClick={() => handleSendProposal(proposal)}
+                            disabled={sendingProposal === proposal._id}
+                            className="flex items-center space-x-1 px-2 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-xs hover:bg-emerald-500/30 transition-all disabled:opacity-50 flex-1 justify-center"
+                          >
+                            {sendingProposal === proposal._id ? (
+                              <div className="w-3 h-3 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin"></div>
+                            ) : (
+                              <>
+                                <Send className="w-3 h-3" />
+                                <span>Send</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                      
+                      {proposal.status === 'sent' && proposal.sentDate && (
+                        <div className="flex items-center justify-center space-x-1 text-xs text-slate-400 mt-2">
+                          <CheckCircle className="w-3 h-3" />
+                          <span>Sent {new Date(proposal.sentDate).toLocaleDateString()}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <FileText className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                  <p className="text-slate-400 text-xs mb-2">No proposals yet</p>
+                  <button
+                    onClick={handleGenerateProposal}
+                    className="inline-flex items-center space-x-1 px-3 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all text-xs"
+                  >
+                    <Wand2 className="w-3 h-3" />
+                    <span>Generate First</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Actions */}
             <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
               <h3 className="text-lg font-medium text-white mb-4">Actions</h3>
@@ -724,16 +1042,16 @@ const LeadDetails = () => {
                 <button
                   onClick={() => window.open(`mailto:${lead.email}`, '_blank')}
                   disabled={!lead.email}
-                  className="w-full flex items-center space-x-2 px-4 py-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-xl hover:bg-blue-500/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full flex items-center space-x-2 px-4 py-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-xl hover:bg-blue-500/30 transition-all duration-200 disabled:opacity-50"
                 >
                   <Mail className="w-4 h-4" />
-                  <span>Send Email</span>
+                  <span>Email</span>
                 </button>
                 
                 <button
                   onClick={() => window.open(`tel:${lead.phone}`, '_blank')}
                   disabled={!lead.phone}
-                  className="w-full flex items-center space-x-2 px-4 py-2 bg-green-500/20 text-green-400 border border-green-500/30 rounded-xl hover:bg-green-500/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full flex items-center space-x-2 px-4 py-2 bg-green-500/20 text-green-400 border border-green-500/30 rounded-xl hover:bg-green-500/30 transition-all duration-200 disabled:opacity-50"
                 >
                   <Phone className="w-4 h-4" />
                   <span>Call</span>
@@ -752,6 +1070,22 @@ const LeadDetails = () => {
           </div>
         </div>
       </div>
+
+      {/* Proposal Modal */}
+      <ProposalModal
+        isOpen={showProposalModal}
+        onClose={handleProposalModalClose}
+        lead={lead}
+        onProposalGenerated={handleProposalGenerated}
+      />
+
+      {/* Project Conversion Modal */}
+      <ProjectConversionModal
+        isOpen={showProjectModal}
+        onClose={() => setShowProjectModal(false)}
+        lead={lead}
+        onProjectCreated={handleProjectCreated}
+      />
     </div>
   )
 }

@@ -17,10 +17,15 @@ import {
   UserCheck,
   ChevronLeft,
   ChevronRight,
-  X
+  X,
+  FileText,
+  Wand2,
+  Eye,
+  Download
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import apiClient from '../lib/api-client'
+import ProposalModal from '../components/ProposalModal'
 
 const Leads = () => {
   const navigate = useNavigate()
@@ -34,6 +39,11 @@ const Leads = () => {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [saving, setSaving] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  
+  // Proposal modal state
+  const [showProposalModal, setShowProposalModal] = useState(false)
+  const [selectedLead, setSelectedLead] = useState(null)
+  const [proposals, setProposals] = useState({})
 
   // Pagination state
   const [pagination, setPagination] = useState({
@@ -107,6 +117,41 @@ const Leads = () => {
     await loadLeads(pagination.page, searchQuery, statusFilter, priorityFilter)
     setRefreshing(false)
     toast.success('Leads refreshed')
+  }
+
+  // Load proposals for a specific lead
+  const loadProposals = async (leadId) => {
+    try {
+      const result = await apiClient.getLeadProposals(leadId)
+      if (result.success) {
+        setProposals(prev => ({
+          ...prev,
+          [leadId]: result.data.proposals
+        }))
+      }
+    } catch (error) {
+      console.error('Error loading proposals:', error)
+    }
+  }
+
+  // Handle proposal generation
+  const handleGenerateProposal = (lead) => {
+    setSelectedLead(lead)
+    setShowProposalModal(true)
+  }
+
+  // Handle proposal generation completion
+  const handleProposalGenerated = (proposal) => {
+    setProposals(prev => ({
+      ...prev,
+      [proposal.leadId]: [...(prev[proposal.leadId] || []), proposal]
+    }))
+  }
+
+  // Handle proposal modal close
+  const handleProposalModalClose = () => {
+    setShowProposalModal(false)
+    setSelectedLead(null)
   }
 
   const handleSearch = (query) => {
@@ -287,6 +332,15 @@ const Leads = () => {
   useEffect(() => {
     loadLeads()
   }, [])
+
+  // Load proposals for all leads when leads change
+  useEffect(() => {
+    leads.forEach(lead => {
+      if (!proposals[lead._id]) {
+        loadProposals(lead._id)
+      }
+    })
+  }, [leads])
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -478,9 +532,10 @@ const Leads = () => {
                 <div className="col-span-3">Lead</div>
                 <div className="col-span-2">Company</div>
                 <div className="col-span-2">Contact</div>
-                <div className="col-span-2">Status</div>
+                <div className="col-span-1">Status</div>
                 <div className="col-span-1">Priority</div>
                 <div className="col-span-2">Added</div>
+                <div className="col-span-1">Actions</div>
               </div>
             </div>
 
@@ -538,7 +593,7 @@ const Leads = () => {
                     </div>
 
                     {/* Status */}
-                    <div className="col-span-2">
+                    <div className="col-span-1">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(lead.status)}`}>
                         {lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}
                       </span>
@@ -558,6 +613,63 @@ const Leads = () => {
                         <span className="text-slate-400">
                           {new Date(lead.createdAt).toLocaleDateString()}
                         </span>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="col-span-1">
+                      <div className="flex items-center justify-center space-x-1">
+                        {proposals[lead._id] && proposals[lead._id].length > 0 ? (
+                          <div className="flex items-center space-x-1">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                const latestProposal = proposals[lead._id][0]
+                                const viewUrl = apiClient.viewProposal(latestProposal._id)
+                                window.open(viewUrl, '_blank')
+                              }}
+                              className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-lg transition-all duration-200 group"
+                              title="View Proposal"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation()
+                                try {
+                                  const latestProposal = proposals[lead._id][0]
+                                  const blob = await apiClient.downloadProposal(latestProposal._id)
+                                  const url = window.URL.createObjectURL(blob)
+                                  const a = document.createElement('a')
+                                  a.href = url
+                                  a.download = `proposal-${latestProposal.proposalNumber}.pdf`
+                                  document.body.appendChild(a)
+                                  a.click()
+                                  window.URL.revokeObjectURL(url)
+                                  document.body.removeChild(a)
+                                  toast.success('Proposal downloaded!')
+                                } catch (error) {
+                                  toast.error('Failed to download proposal')
+                                }
+                              }}
+                              className="p-2 text-slate-400 hover:text-cyan-400 hover:bg-cyan-400/10 rounded-lg transition-all duration-200"
+                              title="Download Proposal"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleGenerateProposal(lead)
+                            }}
+                            className="p-2 text-slate-400 hover:text-cyan-400 hover:bg-cyan-400/10 rounded-lg transition-all duration-200 group"
+                            title="Generate Proposal"
+                          >
+                            <Wand2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -727,6 +839,14 @@ const Leads = () => {
           </motion.div>
         </div>
       )}
+
+      {/* Proposal Modal */}
+      <ProposalModal
+        isOpen={showProposalModal}
+        onClose={handleProposalModalClose}
+        lead={selectedLead}
+        onProposalGenerated={handleProposalGenerated}
+      />
     </div>
   )
 }

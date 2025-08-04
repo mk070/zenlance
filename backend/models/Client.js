@@ -357,11 +357,13 @@ clientSchema.virtual('daysSinceAcquisition').get(function() {
 
 // Virtual for active projects count
 clientSchema.virtual('activeProjectsCount').get(function() {
+  if (!this.projects || !Array.isArray(this.projects)) return 0;
   return this.projects.filter(p => p.status === 'Active').length;
 });
 
 // Virtual for project success rate
 clientSchema.virtual('projectSuccessRate').get(function() {
+  if (!this.projects || !Array.isArray(this.projects)) return 0;
   const completed = this.projects.filter(p => p.status === 'Completed').length;
   const total = this.projects.filter(p => p.status !== 'Planning').length;
   return total > 0 ? Math.round((completed / total) * 100) : 0;
