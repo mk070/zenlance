@@ -28,12 +28,18 @@ import {
   Eye,
   Download,
   Send,
-  FolderPlus
+  FolderPlus,
+   Sparkles,
+  Bot,
+  TrendingUp
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import apiClient from '../lib/api-client'
 import ProposalModal from '../components/ProposalModal'
 import ProjectConversionModal from '../components/ProjectConversionModal'
+import AIButton from '../components/ai/AIButton'
+import AISuggestionsPanel from '../components/ai/AISuggestionsPanel'
+import aiService from '../services/aiService'
 
 const LeadDetails = () => {
   const { id } = useParams()
@@ -98,27 +104,27 @@ const LeadDetails = () => {
     timeline: {
       startDate: '',
       endDate: '',
-      urgency: 'medium'
+      urgency: 'Flexible'
     },
     interests: [],
     tags: []
   })
 
   const statusOptions = [
-    { value: 'new', label: 'New', color: 'text-blue-400 bg-blue-400/10' },
-    { value: 'contacted', label: 'Contacted', color: 'text-yellow-400 bg-yellow-400/10' },
-    { value: 'qualified', label: 'Qualified', color: 'text-green-400 bg-green-400/10' },
-    { value: 'proposal', label: 'Proposal Sent', color: 'text-purple-400 bg-purple-400/10' },
-    { value: 'negotiation', label: 'Negotiation', color: 'text-orange-400 bg-orange-400/10' },
-    { value: 'closed_won', label: 'Closed Won', color: 'text-emerald-400 bg-emerald-400/10' },
-    { value: 'closed_lost', label: 'Closed Lost', color: 'text-red-400 bg-red-400/10' }
+    { value: 'New', label: 'New', color: 'text-blue-400 bg-blue-400/10' },
+    { value: 'Contacted', label: 'Contacted', color: 'text-yellow-400 bg-yellow-400/10' },
+    { value: 'Qualified', label: 'Qualified', color: 'text-green-400 bg-green-400/10' },
+    { value: 'Proposal', label: 'Proposal Sent', color: 'text-purple-400 bg-purple-400/10' },
+    { value: 'Negotiation', label: 'Negotiation', color: 'text-orange-400 bg-orange-400/10' },
+    { value: 'Won', label: 'Closed Won', color: 'text-emerald-400 bg-emerald-400/10' },
+    { value: 'Lost', label: 'Closed Lost', color: 'text-red-400 bg-red-400/10' }
   ]
 
   const priorityOptions = [
-    { value: 'low', label: 'Low', color: 'text-gray-400' },
-    { value: 'medium', label: 'Medium', color: 'text-yellow-400' },
-    { value: 'high', label: 'High', color: 'text-orange-400' },
-    { value: 'urgent', label: 'Urgent', color: 'text-red-400' }
+    { value: 'Low', label: 'Low', color: 'text-gray-400' },
+    { value: 'Medium', label: 'Medium', color: 'text-yellow-400' },
+    { value: 'High', label: 'High', color: 'text-orange-400' },
+    { value: 'Urgent', label: 'Urgent', color: 'text-red-400' }
   ]
 
   // Load lead data
@@ -283,7 +289,23 @@ const LeadDetails = () => {
       }
     } catch (error) {
       console.error('Error updating lead:', error)
-      toast.error('Failed to update lead')
+      
+      // Handle validation errors specifically
+      let errorMessage = 'Failed to update lead'
+      if (error.data?.validationErrors && Array.isArray(error.data.validationErrors)) {
+        const validationMessages = error.data.validationErrors.map(err => 
+          `${err.field}: ${err.message}`
+        ).join(', ')
+        errorMessage = `Validation errors: ${validationMessages}`
+      } else if (error.message && error.message !== '[object Object]') {
+        errorMessage = error.message
+      } else if (error.data?.error) {
+        errorMessage = error.data.error
+      } else if (error.data?.message) {
+        errorMessage = error.data.message
+      }
+      
+      toast.error(errorMessage)
     } finally {
       setSaving(false)
     }
@@ -351,6 +373,103 @@ const LeadDetails = () => {
       navigate(`/projects/${project._id}`)
     } else {
       navigate('/projects')
+      
+  const handleCreateProposal = async () => {
+    try {
+      setSaving(true)
+      
+      // First, update lead status to "Proposal" if not already
+      if (lead.status !== 'Proposal') {
+        await apiClient.updateLead(id, { status: 'Proposal' })
+        setLead(prev => ({ ...prev, status: 'Proposal' }))
+      }
+
+      // Check if lead is already converted to client
+      if (lead.convertedToClient && lead.clientId) {
+        // Navigate directly to create quote for existing client
+        navigate(`/quotes?client=${lead.clientId}&source=lead&leadId=${id}`)
+      } else {
+        // Convert lead to client first, then create proposal
+        const convertResult = await apiClient.convertLeadToClient(id)
+        
+        if (convertResult.success) {
+          // Navigate to create quote for the new client
+          navigate(`/quotes?client=${convertResult.data.client._id}&source=lead&leadId=${id}`)
+          toast.success('Lead converted to client and ready for proposal!')
+        } else {
+          toast.error(convertResult.error || 'Failed to convert lead to client')
+        }
+      }
+    } catch (error) {
+      console.error('Error creating proposal:', error)
+      toast.error('Failed to create proposal')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleAIEnrichLead = async () => {
+    try {
+      const result = await aiService.enrichLeadData(id)
+      if (result.success && result.data.enrichedData) {
+        const enrichedData = result.data.enrichedData
+        
+        // Update form data with enriched information
+        setFormData(prev => ({
+          ...prev,
+          industry: enrichedData.industry || prev.industry,
+          budget: {
+            ...prev.budget,
+            min: enrichedData.budgetRange?.min || prev.budget.min,
+            max: enrichedData.budgetRange?.max || prev.budget.max
+          }
+        }))
+        
+        toast.success('Lead data enriched with AI insights!')
+      }
+    } catch (error) {
+      console.error('AI enrichment error:', error)
+    }
+  }
+
+  const handleAIFollowUp = async () => {
+    try {
+      const context = {
+        lastContactDate: lead.lastContactDate,
+        daysSinceContact: lead.daysSinceLastContact,
+        reason: 'follow_up'
+      }
+      
+      const result = await aiService.generateFollowUpEmail(id, context)
+      if (result.success) {
+        // You could open an email composer or show the generated email
+        toast.success('AI follow-up email generated!')
+        
+        // For now, we'll just show the email in console or could add to notes
+        console.log('Generated email:', result.data.email)
+      }
+    } catch (error) {
+      console.error('AI follow-up error:', error)
+    }
+  }
+
+  const handleAISuggestionClick = (suggestion) => {
+    // Handle different types of AI suggestions
+    switch (suggestion.type) {
+      case 'email':
+        handleAIFollowUp()
+        break
+      case 'call':
+        toast.info(`Suggestion: ${suggestion.title}`)
+        break
+      case 'meeting':
+        toast.info(`Suggestion: ${suggestion.title}`)
+        break
+      case 'proposal':
+        handleCreateProposal()
+        break
+      default:
+        toast.info(`Suggestion: ${suggestion.title}`)
     }
   }
 
@@ -468,29 +587,51 @@ const LeadDetails = () => {
             </div>
             
             <div className="flex items-center space-x-3">
-              {lead.status !== 'closed_won' && (
-                <>
-                  <motion.button
-                    onClick={handleConvertToProject}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="flex items-center space-x-2 px-4 py-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-xl hover:bg-blue-500/30 transition-all duration-200"
-                  >
-                    <FolderPlus className="w-4 h-4" />
-                    <span>Convert to Project</span>
-                  </motion.button>
-                  
-                  <motion.button
-                    onClick={handleConvertToClient}
-                    disabled={saving}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="flex items-center space-x-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl hover:bg-emerald-500/30 transition-all duration-200 disabled:opacity-50"
-                  >
-                    <UserCheck className="w-4 h-4" />
-                    <span>Convert to Client</span>
-                  </motion.button>
-                </>
+
+              {/* AI-powered buttons */}
+              <AIButton
+                onClick={handleAIEnrichLead}
+                icon={TrendingUp}
+                size="sm"
+                variant="secondary"
+              >
+                AI Enrich
+              </AIButton>
+              
+              <AIButton
+                onClick={handleAIFollowUp}
+                icon={Bot}
+                size="sm"
+                variant="secondary"
+              >
+                AI Follow-up
+              </AIButton>
+              
+              {lead.status !== 'Won' && lead.status !== 'Lost' && (
+                <motion.button
+                  onClick={handleCreateProposal}
+                  disabled={saving}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex items-center space-x-2 px-4 py-2 bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded-xl hover:bg-purple-500/30 transition-all duration-200 disabled:opacity-50"
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>Create Proposal</span>
+                </motion.button>
+              )}
+              
+              {lead.status !== 'Won' && (
+                <motion.button
+                  onClick={handleConvertToClient}
+                  disabled={saving}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex items-center space-x-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl hover:bg-emerald-500/30 transition-all duration-200 disabled:opacity-50"
+                >
+                  <UserCheck className="w-4 h-4" />
+                  <span>Convert to Client</span>
+                </motion.button>
+
               )}
               
               {!isEditing ? (
@@ -1067,6 +1208,14 @@ const LeadDetails = () => {
                 </button>
               </div>
             </div>
+
+            {/* AI Suggestions Panel */}
+            <AISuggestionsPanel
+              entityType="lead"
+              entityId={id}
+              onActionClick={handleAISuggestionClick}
+              className="mt-6"
+            />
           </div>
         </div>
       </div>

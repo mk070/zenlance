@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
+import AIAnalyticsDashboard from '../components/ai/AIAnalyticsDashboard'
 
 const Dashboard = () => {
   console.log('🚀 Dashboard component is rendering!')
@@ -345,6 +346,11 @@ const Dashboard = () => {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* AI Analytics Dashboard */}
+        <div className="col-span-full">
+          <AIAnalyticsDashboard />
         </div>
       </motion.div>
     </div>

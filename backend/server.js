@@ -24,6 +24,7 @@ console.log('- JWT_SECRET:', process.env.JWT_SECRET ? 'Set' : 'Not set');
 
 let authRoutes, userRoutes, profileRoutes, leadsRoutes, clientsRoutes, invoicesRoutes, quotesRoutes, projectsRoutes, proposalsRoutes, socialRoutes, publicRoutes, testOpenaiRoutes, errorHandler, notFound, logger, testAzureOpenAIConnection, displayStartupSuccess, displayStartupFailure;
 
+
 try {
   console.log('🔍 Loading route modules...');
   
@@ -63,7 +64,7 @@ try {
   const socialModule = await import('./routes/social.js');
   socialRoutes = socialModule.default;
   console.log('✅ Social routes loaded');
-  
+
   const proposalsModule = await import('./routes/proposals.js');
   proposalsRoutes = proposalsModule.default;
   console.log('✅ Proposals routes loaded');
@@ -74,6 +75,11 @@ try {
   
   // Skip test OpenAI routes (not needed in sample mode)
   console.log('⚡ Skipping test OpenAI routes - using sample data mode');
+
+  const aiModule = await import('./routes/ai.js');
+  aiRoutes = aiModule.default;
+  console.log('✅ AI routes loaded');
+
   
   // Import middleware
   console.log('🔍 Loading middleware...');
@@ -284,6 +290,10 @@ try {
   // Public routes (no authentication required)
   app.use('/api/public', publicRoutes);
   console.log('✅ Public routes mounted');
+
+  app.use('/api/ai', aiRoutes);
+  console.log('✅ AI routes mounted');
+
 } catch (error) {
   console.error('❌ Error mounting routes:', error);
   console.error('Error details:', error.message);
