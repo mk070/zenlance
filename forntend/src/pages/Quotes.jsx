@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { 
   FileText, 
   Plus, 
@@ -25,9 +25,12 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import apiClient from '../lib/api-client'
+import AIButton from '../components/ai/AIButton'
+import AIProposalGenerator from '../components/ai/AIProposalGenerator'
 
 const Quotes = () => {
   const navigate = useNavigate()
+  const location = useLocation()
   const [quotes, setQuotes] = useState([])
   const [filteredQuotes, setFilteredQuotes] = useState([])
   const [loading, setLoading] = useState(true)
@@ -43,6 +46,10 @@ const Quotes = () => {
   const [totalPages, setTotalPages] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
   const itemsPerPage = 10
+
+  // AI Features
+  const [showAIProposalGenerator, setShowAIProposalGenerator] = useState(false)
+  const [selectedLeadForAI, setSelectedLeadForAI] = useState(null)
 
   // Form data for creating quotes
   const [formData, setFormData] = useState({
@@ -270,6 +277,25 @@ const Quotes = () => {
     }
   }
 
+  const handleOpenAIProposalGenerator = () => {
+    if (selectedLeadForAI) {
+      setShowAIProposalGenerator(true)
+    } else {
+      toast.error('No lead data available for AI generation')
+    }
+  }
+
+  const handleAIProposalGenerated = (proposal) => {
+    // Add the AI-generated proposal to the form description
+    setFormData(prev => ({
+      ...prev,
+      description: proposal
+    }))
+    
+    setShowAIProposalGenerator(false)
+    toast.success('AI proposal added to quote form!')
+  }
+
   const handleSendQuote = async (quoteId) => {
     try {
       const result = await apiClient.sendQuote(quoteId)
@@ -306,7 +332,35 @@ const Quotes = () => {
 
   useEffect(() => {
     loadQuotes()
-  }, [])
+    
+    // Handle URL parameters from lead conversion
+    const urlParams = new URLSearchParams(location.search)
+    const clientId = urlParams.get('client')
+    const source = urlParams.get('source')
+    const leadId = urlParams.get('leadId')
+    
+    if (clientId && source === 'lead') {
+      // Pre-fill form with client and show create form
+      setFormData(prev => ({
+        ...prev,
+        clientId: clientId
+      }))
+      setShowCreateForm(true)
+      
+      // Show a helpful message and option to use AI
+      if (leadId) {
+        toast.success('Ready to create proposal for this lead!', {
+          duration: 4000
+        })
+        
+        // Set the lead data for AI generator
+        setSelectedLeadForAI({
+          id: leadId,
+          clientId: clientId
+        })
+      }
+    }
+  }, [location.search])
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -580,7 +634,18 @@ const Quotes = () => {
             exit={{ opacity: 0, scale: 0.95 }}
           >
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-light text-white">Create New Quote</h2>
+              <div className="flex items-center space-x-4">
+                <h2 className="text-2xl font-light text-white">Create New Quote</h2>
+                {selectedLeadForAI && (
+                  <AIButton
+                    onClick={handleOpenAIProposalGenerator}
+                    size="sm"
+                    variant="primary"
+                  >
+                    AI Generate Proposal
+                  </AIButton>
+                )}
+              </div>
               <button
                 onClick={() => setShowCreateForm(false)}
                 className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all duration-200"
@@ -796,6 +861,15 @@ const Quotes = () => {
           </motion.div>
         </div>
       )}
+
+      {/* AI Proposal Generator Modal */}
+      <AIProposalGenerator
+        isOpen={showAIProposalGenerator}
+        onClose={() => setShowAIProposalGenerator(false)}
+        leadId={selectedLeadForAI?.id}
+        leadData={selectedLeadForAI || {}}
+        onProposalGenerated={handleAIProposalGenerated}
+      />
     </div>
   )
 }
