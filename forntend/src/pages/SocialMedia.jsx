@@ -22,8 +22,39 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react'
+import { 
+  Facebook as FacebookIcon, 
+  Instagram as InstagramIcon, 
+  Twitter as TwitterIcon, 
+  LinkedIn as LinkedInIcon 
+} from '@mui/icons-material'
 import toast from 'react-hot-toast'
-import apiClient from '../lib/api-client'
+import { 
+  getFilteredPosts, 
+  getAnalytics, 
+  getAllPosts,
+  updatePostPerformance,
+  getMockConnectedAccounts,
+  getPlatformColor,
+  getStatusColor,
+  formatDate
+} from '../lib/social-api-client'
+
+// Helper function to get platform icon
+const getPlatformIcon = (platform) => {
+  switch (platform) {
+    case 'facebook':
+      return <FacebookIcon sx={{ fontSize: 16, color: '#06b6d4' }} />
+    case 'instagram':
+      return <InstagramIcon sx={{ fontSize: 16, color: '#06b6d4' }} />
+    case 'twitter':
+      return <TwitterIcon sx={{ fontSize: 16, color: '#06b6d4' }} />
+    case 'linkedin':
+      return <LinkedInIcon sx={{ fontSize: 16, color: '#06b6d4' }} />
+    default:
+      return platform.substring(0, 1).toUpperCase()
+  }
+}
 
 const SocialMedia = () => {
   const navigate = useNavigate()
@@ -49,57 +80,64 @@ const SocialMedia = () => {
     pages: 0
   })
 
-  // Sample data - replace with API call
-  const sampleAccounts = [
-    { platform: 'facebook', name: 'Your Business', followers: '12.5K', status: 'connected' },
-    { platform: 'instagram', name: '@yourbusiness', followers: '8.2K', status: 'connected' },
-    { platform: 'twitter', name: '@yourbusiness', followers: '5.1K', status: 'connected' },
-    { platform: 'linkedin', name: 'Your Business', followers: '3.7K', status: 'connected' }
-  ]
-
-  const samplePosts = [
-    {
-      id: 1,
-      content: 'Excited to share our latest project! 🚀',
-      platforms: ['twitter', 'linkedin'],
-      status: 'published',
-      scheduledFor: '2024-12-01T10:00:00Z',
-      publishedAt: '2024-12-01T10:00:00Z',
-      engagement: { likes: 45, comments: 12, shares: 8 }
-    },
-    {
-      id: 2,
-      content: 'Working on some amazing new features...',
-      platforms: ['facebook', 'instagram'],
-      status: 'scheduled',
-      scheduledFor: '2024-12-15T14:00:00Z',
-      engagement: { likes: 0, comments: 0, shares: 0 }
-    }
-  ]
-
-  // Load posts and analytics
+  // Load posts and analytics from API
   const loadPosts = async () => {
     try {
       setLoading(true)
       
-      // Replace with actual API calls
-      setConnectedAccounts(sampleAccounts)
-      setPosts(samplePosts)
-      setFilteredPosts(samplePosts)
-      
-      setAnalytics({
-        totalPosts: samplePosts.length,
-        scheduledPosts: samplePosts.filter(p => p.status === 'scheduled').length,
-        totalReach: 25680,
-        totalEngagement: 1247
+      // Load posts from API
+      const postsResult = await getFilteredPosts({
+        page: pagination.page,
+        limit: pagination.limit,
+        status: filterStatus !== 'all' ? filterStatus : undefined,
+        platform: filterPlatform !== 'all' ? filterPlatform : undefined,
+        search: searchTerm || undefined
       })
 
-      setPagination({
-        page: 1,
-        limit: 20,
-        total: samplePosts.length,
-        pages: Math.ceil(samplePosts.length / 20)
-      })
+      if (postsResult.success) {
+        const postsData = postsResult.data.posts.map(post => ({
+          id: post._id || post.id,
+          content: post.content,
+          platforms: post.platforms,
+          status: post.status,
+          scheduledFor: post.scheduledDate,
+          publishedAt: post.publishedDate,
+          engagement: {
+            likes: post.performance?.likes || 0,
+            comments: post.performance?.comments || 0,
+            shares: post.performance?.shares || 0
+          },
+          createdAt: post.createdAt
+        }))
+        
+        setPosts(postsData)
+        setFilteredPosts(postsData)
+        setPagination(postsResult.data.pagination)
+      } else {
+        console.error('Failed to load posts:', postsResult.error)
+        toast.error('Failed to load posts')
+      }
+
+      // Load analytics from API
+      const analyticsResult = await getAnalytics(30)
+      if (analyticsResult.success) {
+        const data = analyticsResult.data
+        setAnalytics({
+          totalPosts: data.totalPosts || 0,
+          scheduledPosts: data.scheduledPosts || 0,
+          totalReach: data.performanceStats?.totalViews || 0,
+          totalEngagement: (data.performanceStats?.totalLikes || 0) + 
+                          (data.performanceStats?.totalShares || 0) + 
+                          (data.performanceStats?.totalComments || 0)
+        })
+      } else {
+        console.error('Failed to load analytics:', analyticsResult.error)
+      }
+
+      // Load connected accounts
+      const accounts = await getMockConnectedAccounts()
+      setConnectedAccounts(accounts)
+
     } catch (error) {
       console.error('Error loading social media data:', error)
       toast.error('Failed to load social media data')
@@ -118,63 +156,14 @@ const SocialMedia = () => {
 
   const handleSearch = (query) => {
     setSearchTerm(query)
-    const filtered = posts.filter(post =>
-      post.content.toLowerCase().includes(query.toLowerCase())
-    )
-    setFilteredPosts(filtered)
   }
 
   const handleStatusFilter = (status) => {
     setFilterStatus(status)
-    let filtered = posts
-    
-    if (status !== 'all') {
-      filtered = filtered.filter(post => post.status === status)
-    }
-    
-    if (searchTerm) {
-      filtered = filtered.filter(post =>
-        post.content.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    }
-    
-    setFilteredPosts(filtered)
   }
 
   const handlePlatformFilter = (platform) => {
     setFilterPlatform(platform)
-    let filtered = posts
-    
-    if (platform !== 'all') {
-      filtered = filtered.filter(post => post.platforms.includes(platform))
-    }
-    
-    if (filterStatus !== 'all') {
-      filtered = filtered.filter(post => post.status === filterStatus)
-    }
-    
-    if (searchTerm) {
-      filtered = filtered.filter(post =>
-        post.content.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    }
-    
-    setFilteredPosts(filtered)
-  }
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'published':
-        return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20'
-      case 'scheduled':
-        return 'text-blue-400 bg-blue-400/10 border-blue-400/20'
-      case 'draft':
-        return 'text-slate-400 bg-slate-400/10 border-slate-400/20'
-      case 'failed':
-        return 'text-red-400 bg-red-400/10 border-red-400/20'
-      default:
-        return 'text-slate-400 bg-slate-400/10 border-slate-400/20'
-    }
   }
 
   const getStatusIcon = (status) => {
@@ -192,24 +181,25 @@ const SocialMedia = () => {
     }
   }
 
-  const getPlatformColor = (platform) => {
-    switch (platform) {
-      case 'facebook':
-        return 'from-blue-500 to-blue-600'
-      case 'instagram':
-        return 'from-pink-500 to-purple-600'
-      case 'twitter':
-        return 'from-blue-400 to-blue-500'
-      case 'linkedin':
-        return 'from-blue-600 to-blue-700'
-      default:
-        return 'from-gray-500 to-gray-600'
-    }
-  }
-
   useEffect(() => {
     loadPosts()
   }, [])
+
+  // Reload posts when filters change
+  useEffect(() => {
+    if (!initialLoading) {
+      // Reset pagination when filters change
+      setPagination(prev => ({ ...prev, page: 1 }))
+      loadPosts()
+    }
+  }, [filterStatus, filterPlatform, searchTerm])
+
+  // Reload posts when pagination changes
+  useEffect(() => {
+    if (!initialLoading && pagination.page > 1) {
+      loadPosts()
+    }
+  }, [pagination.page])
 
   if (initialLoading) {
     return (
@@ -233,7 +223,7 @@ const SocialMedia = () => {
       >
         <div>
           <h1 className="text-3xl font-light text-white mb-2 flex items-center space-x-3">
-            <Share2 className="w-8 h-8 text-cyan-400" />
+            <TrendingUp className="w-8 h-8 text-cyan-400" />
             <span>Social Media</span>
           </h1>
           <p className="text-slate-400 font-light">
@@ -306,10 +296,8 @@ const SocialMedia = () => {
               className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 hover:bg-white/10 transition-all duration-200"
             >
               <div className="flex items-center justify-between mb-2">
-                <div className={`w-8 h-8 rounded-lg bg-gradient-to-r ${getPlatformColor(account.platform)} flex items-center justify-center`}>
-                  <span className="text-white text-xs font-bold">
-                    {account.platform.substring(0, 2).toUpperCase()}
-                  </span>
+                <div className={`w-8 h-8 rounded-lg bg-slate-700/50 flex items-center justify-center`}>
+                  {getPlatformIcon(account.platform)}
                 </div>
                 <span className="text-emerald-400 text-xs font-medium">
                   {account.status === 'connected' ? 'Connected' : 'Disconnected'}
@@ -408,85 +396,118 @@ const SocialMedia = () => {
             )}
           </div>
         ) : (
-          <div className="divide-y divide-white/10">
-            {filteredPosts.map((post, index) => {
-              const StatusIcon = getStatusIcon(post.status)
-              return (
-                <motion.div
-                  key={post.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1, duration: 0.5 }}
-                  className="p-6 hover:bg-white/5 transition-all duration-200 cursor-pointer group"
-                >
-                  <div className="flex items-start space-x-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-cyan-400/20 to-blue-500/20 rounded-xl flex items-center justify-center border border-cyan-400/20 flex-shrink-0">
-                      <Share2 className="w-6 h-6 text-cyan-400" />
-                    </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center space-x-2">
-                          <StatusIcon className="w-4 h-4 text-slate-400" />
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(post.status)}`}>
-                            {post.status.charAt(0).toUpperCase() + post.status.slice(1)}
-                          </span>
-                        </div>
-                        
-                        <div className="flex items-center space-x-2">
-                          {post.platforms.map((platform) => (
-                            <div
-                              key={platform}
-                              className={`w-6 h-6 rounded bg-gradient-to-r ${getPlatformColor(platform)} flex items-center justify-center`}
-                            >
-                              <span className="text-white text-xs font-bold">
-                                {platform.substring(0, 1).toUpperCase()}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
+          <>
+            <div className="divide-y divide-white/10">
+              {filteredPosts.map((post, index) => {
+                const StatusIcon = getStatusIcon(post.status)
+                return (
+                  <motion.div
+                    key={post.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1, duration: 0.5 }}
+                    className="p-6 hover:bg-white/5 transition-all duration-200 cursor-pointer group"
+                  >
+                    <div className="flex items-start space-x-4">
+                      <div className="w-12 h-12 bg-gradient-to-br from-cyan-400/20 to-blue-500/20 rounded-xl flex items-center justify-center border border-cyan-400/20 flex-shrink-0">
+                        <Share2 className="w-6 h-6 text-cyan-400" />
                       </div>
                       
-                      <p className="text-white font-medium mb-2 group-hover:text-cyan-300 transition-colors">
-                        {post.content}
-                      </p>
-                      
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-4 text-slate-400 text-sm">
-                          <div className="flex items-center space-x-1">
-                            <Calendar className="w-4 h-4" />
-                            <span>
-                              {post.status === 'scheduled' 
-                                ? `Scheduled for ${new Date(post.scheduledFor).toLocaleDateString()}`
-                                : `Published ${new Date(post.publishedAt).toLocaleDateString()}`
-                              }
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center space-x-2">
+                            <StatusIcon className="w-4 h-4 text-slate-400" />
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(post.status)}`}>
+                              {post.status.charAt(0).toUpperCase() + post.status.slice(1)}
                             </span>
                           </div>
+                          
+                          <div className="flex items-center space-x-2">
+                                              {post.platforms.map((platform) => (
+                    <div
+                      key={platform}
+                      className={`w-6 h-6 rounded bg-slate-700/50 flex items-center justify-center`}
+                    >
+                      {getPlatformIcon(platform)}
+                    </div>
+                  ))}
+                          </div>
                         </div>
                         
-                        {post.status === 'published' && (
+                        <p className="text-white font-medium mb-2 group-hover:text-cyan-300 transition-colors">
+                          {post.content}
+                        </p>
+                        
+                        <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-4 text-slate-400 text-sm">
                             <div className="flex items-center space-x-1">
-                              <Heart className="w-4 h-4" />
-                              <span>{post.engagement.likes}</span>
-                            </div>
-                            <div className="flex items-center space-x-1">
-                              <MessageCircle className="w-4 h-4" />
-                              <span>{post.engagement.comments}</span>
-                            </div>
-                            <div className="flex items-center space-x-1">
-                              <Repeat2 className="w-4 h-4" />
-                              <span>{post.engagement.shares}</span>
+                              <Calendar className="w-4 h-4" />
+                              <span>
+                                {post.status === 'scheduled' 
+                                  ? `Scheduled for ${formatDate(post.scheduledFor)}`
+                                  : post.status === 'published'
+                                  ? `Published ${formatDate(post.publishedAt)}`
+                                  : `Created ${formatDate(post.createdAt)}`
+                                }
+                              </span>
                             </div>
                           </div>
-                        )}
+                          
+                          {post.status === 'published' && (
+                            <div className="flex items-center space-x-4 text-slate-400 text-sm">
+                              <div className="flex items-center space-x-1">
+                                <Heart className="w-4 h-4" />
+                                <span>{post.engagement.likes}</span>
+                              </div>
+                              <div className="flex items-center space-x-1">
+                                <MessageCircle className="w-4 h-4" />
+                                <span>{post.engagement.comments}</span>
+                              </div>
+                              <div className="flex items-center space-x-1">
+                                <Repeat2 className="w-4 h-4" />
+                                <span>{post.engagement.shares}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </motion.div>
-              )
-            })}
-          </div>
+                  </motion.div>
+                )
+              })}
+            </div>
+
+            {/* Pagination */}
+            {pagination.totalPages > 1 && (
+              <div className="px-6 py-4 border-t border-white/10 flex items-center justify-between">
+                <div className="text-slate-400 text-sm">
+                  Showing {((pagination.currentPage - 1) * pagination.itemsPerPage) + 1} to {Math.min(pagination.currentPage * pagination.itemsPerPage, pagination.totalItems)} of {pagination.totalItems} posts
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                    disabled={!pagination.hasPrevPage}
+                    className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  
+                  <span className="text-white text-sm">
+                    Page {pagination.currentPage} of {pagination.totalPages}
+                  </span>
+                  
+                  <button
+                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                    disabled={!pagination.hasNextPage}
+                    className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </motion.div>
     </div>

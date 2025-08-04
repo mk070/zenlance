@@ -7,7 +7,7 @@ import {
   FileText, 
   FileSpreadsheet,
   FolderOpen,
-  Share2, 
+  TrendingUp, 
   Settings, 
   User, 
   LogOut,
@@ -60,7 +60,7 @@ const Layout = ({ children }) => {
     { 
       id: 'social', 
       label: 'Social Media', 
-      icon: Share2, 
+      icon: TrendingUp, 
       path: '/social-media'
     }
   ]

@@ -61,6 +61,12 @@ class ApiClient {
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
         throw new Error('Network error. Please check your connection and try again.')
       }
+
+      // Improve error message display
+      if (error.message === '[object Object]') {
+        const betterMessage = error.data?.error || error.data?.message || `Request failed with status ${error.status || 'unknown'}`;
+        error.message = betterMessage;
+      }
       
       throw error
     }
@@ -75,11 +81,9 @@ class ApiClient {
       // If response is not ok, throw an error with the parsed data
       if (!response.ok) {
         // Debug: Log validation errors
-        if (response.status === 400) {
-          console.error('400 Bad Request - Full response:', data)
-        }
+        console.error(`${response.status} Error - Full response:`, data)
         
-        const errorMessage = data.error || data.message || `HTTP ${response.status}`;
+        const errorMessage = data.error || data.message || data.errors?.[0]?.message || `HTTP ${response.status}: ${response.statusText}`;
         const error = new Error(errorMessage);
         error.status = response.status;
         error.data = data;
@@ -576,6 +580,31 @@ class ApiClient {
     })
   }
 
+  // AI-powered Social Media methods
+  async generateAIImages(prompt, style = 'realistic', count = 4) {
+    return this.request('/social/generate-image', {
+      method: 'POST',
+      body: JSON.stringify({ prompt, style, count })
+    })
+  }
+
+  async generateAIText(prompt, tone = 'professional', type = 'generate') {
+    return this.request('/social/generate-text', {
+      method: 'POST',
+      body: JSON.stringify({ prompt, tone, type })
+    })
+  }
+
+  async getAIGeneratedImages(page = 1, limit = 12) {
+    return this.request(`/social/generated-images?page=${page}&limit=${limit}`)
+  }
+
+  async downloadAIImage(imageId) {
+    return this.request(`/social/download-image/${imageId}`, {
+      method: 'POST'
+    })
+  }
+
   // Quotes methods
   async getQuotes(params = {}) {
     const queryString = new URLSearchParams(params).toString()
@@ -685,6 +714,39 @@ class ApiClient {
     return this.request(`/projects/${projectId}/notes`, {
       method: 'POST',
       body: JSON.stringify(noteData)
+    })
+  }
+
+  // Generic HTTP methods for convenience
+  async get(endpoint, params = {}) {
+    const queryString = new URLSearchParams(params).toString()
+    return this.request(`${endpoint}${queryString ? `?${queryString}` : ''}`)
+  }
+
+  async post(endpoint, data = {}) {
+    return this.request(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    })
+  }
+
+  async put(endpoint, data = {}) {
+    return this.request(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    })
+  }
+
+  async patch(endpoint, data = {}) {
+    return this.request(endpoint, {
+      method: 'PATCH',
+      body: JSON.stringify(data)
+    })
+  }
+
+  async delete(endpoint) {
+    return this.request(endpoint, {
+      method: 'DELETE'
     })
   }
 
