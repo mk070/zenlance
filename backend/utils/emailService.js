@@ -204,6 +204,191 @@ class EmailService {
     });
   }
 
+  // Send proposal email with PDF attachment
+  async sendProjectNotificationEmail({ 
+    to, 
+    clientName, 
+    projectName, 
+    message, 
+    projectProgress, 
+    projectStatus, 
+    milestones = [], 
+    publicViewLink,
+    senderName 
+  }) {
+    const statusDisplay = projectStatus?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Unknown'
+    
+    const milestonesHtml = milestones.length > 0 
+      ? `
+        <div style="margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-radius: 8px;">
+          <h3 style="color: #333; margin-bottom: 10px;">Recent Milestones:</h3>
+          ${milestones.map(milestone => `
+            <div style="margin-bottom: 8px; padding: 8px; background-color: white; border-radius: 4px;">
+              <strong>${milestone.title}</strong>
+              <span style="color: ${milestone.status === 'completed' ? '#28a745' : milestone.status === 'overdue' ? '#dc3545' : '#ffc107'}; margin-left: 10px;">
+                ${milestone.status.charAt(0).toUpperCase() + milestone.status.slice(1)}
+              </span>
+              ${milestone.dueDate ? `<div style="color: #666; font-size: 12px;">Due: ${new Date(milestone.dueDate).toLocaleDateString()}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      `
+      : ''
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Project Update - ${projectName}</title>
+      </head>
+      <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; text-align: center; margin-bottom: 30px;">
+          <h1 style="margin: 0; font-size: 28px;">Project Update</h1>
+          <p style="margin: 10px 0 0 0; font-size: 18px; opacity: 0.9;">${projectName}</p>
+        </div>
+
+        <div style="background-color: #ffffff; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+          <p style="font-size: 18px; margin-bottom: 20px;">Hello ${clientName},</p>
+          
+          <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <p style="margin: 0; font-size: 16px;">${message}</p>
+          </div>
+
+          <div style="margin: 30px 0;">
+            <h2 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px;">Project Status</h2>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+              <div style="text-align: center; padding: 15px; background-color: #e3f2fd; border-radius: 8px;">
+                <h3 style="margin: 0; color: #1976d2;">Progress</h3>
+                <div style="font-size: 24px; font-weight: bold; color: #1976d2;">${projectProgress || 0}%</div>
+              </div>
+              
+              <div style="text-align: center; padding: 15px; background-color: #f3e5f5; border-radius: 8px;">
+                <h3 style="margin: 0; color: #7b1fa2;">Status</h3>
+                <div style="font-size: 18px; font-weight: bold; color: #7b1fa2;">${statusDisplay}</div>
+              </div>
+            </div>
+          </div>
+
+          ${milestonesHtml}
+
+          ${publicViewLink ? `
+            <div style="text-align: center; margin: 30px 0; padding: 20px; background-color: #e8f5e8; border-radius: 8px;">
+              <h3 style="color: #333; margin-bottom: 15px;">View Full Project Details</h3>
+              <a href="${publicViewLink}" 
+                 style="display: inline-block; background-color: #28a745; color: white; padding: 12px 30px; text-decoration: none; border-radius: 25px; font-weight: bold; transition: background-color 0.3s;">
+                View Project
+              </a>
+            </div>
+          ` : ''}
+
+          <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #666;">
+            <p style="margin: 0;">Best regards,<br><strong>${senderName}</strong></p>
+          </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 30px; color: #666; font-size: 14px;">
+          <p>This is an automated notification from ${process.env.APP_NAME || 'Zenlance'}.</p>
+        </div>
+      </body>
+      </html>
+    `
+
+    const textVersion = `
+      Project Update: ${projectName}
+      
+      Hello ${clientName},
+      
+      ${message}
+      
+      Project Status:
+      - Progress: ${projectProgress || 0}%
+      - Status: ${statusDisplay}
+      
+      ${milestones.length > 0 ? `
+      Recent Milestones:
+      ${milestones.map(m => `- ${m.title} (${m.status})`).join('\n')}
+      ` : ''}
+      
+      ${publicViewLink ? `View full project details: ${publicViewLink}` : ''}
+      
+      Best regards,
+      ${senderName}
+    `
+
+    return this.sendEmail({
+      to,
+      subject: `Project Update: ${projectName}`,
+      html,
+      text: textVersion
+    })
+  }
+
+  async sendProposalEmail({ to, subject, message, senderName, proposalNumber, pdfBuffer, pdfFileName }) {
+    try {
+      const mailOptions = {
+        from: {
+          name: senderName || process.env.APP_NAME,
+          address: process.env.EMAIL_FROM
+        },
+        to: to,
+        subject: subject,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+            <div style="background: linear-gradient(135deg, #0ea5e9 0%, #1e40af 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+              <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 300;">Zenlancer</h1>
+              <p style="color: #e0f2fe; margin: 10px 0 0 0; font-size: 14px;">Professional Freelance Services</p>
+            </div>
+            
+            <div style="background: white; padding: 40px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+              <h2 style="color: #1e293b; margin: 0 0 20px 0; font-size: 24px;">New Proposal</h2>
+              
+              <div style="background: #f1f5f9; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 0; color: #475569; line-height: 1.6;">${message.replace(/\n/g, '<br>')}</p>
+              </div>
+              
+              <div style="background: #0ea5e9; background: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%); padding: 20px; border-radius: 8px; margin: 30px 0; text-align: center;">
+                <h3 style="color: white; margin: 0 0 10px 0; font-size: 18px;">📎 Proposal Attached</h3>
+                <p style="color: #e0f2fe; margin: 0; font-size: 14px;">Please find the detailed proposal attached as a PDF document.</p>
+              </div>
+              
+              <div style="border-top: 1px solid #e2e8f0; padding-top: 20px; margin-top: 30px;">
+                <p style="color: #64748b; font-size: 12px; margin: 0; text-align: center;">
+                  This proposal was generated using Zenlancer - Professional Freelance Management Platform
+                </p>
+              </div>
+            </div>
+          </div>
+        `,
+        attachments: [
+          {
+            filename: pdfFileName,
+            content: pdfBuffer,
+            contentType: 'application/pdf'
+          }
+        ]
+      };
+
+      const result = await this.transporter.sendMail(mailOptions);
+      
+      logger.info('Proposal email sent successfully', {
+        to: to,
+        proposalNumber: proposalNumber,
+        messageId: result.messageId
+      });
+
+      return {
+        success: true,
+        messageId: result.messageId
+      };
+    } catch (error) {
+      logger.error('Failed to send proposal email:', error);
+      throw error;
+    }
+  }
+
   // Email templates
   generateVerificationEmailTemplate(verificationUrl, firstName) {
     return `

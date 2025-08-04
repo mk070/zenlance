@@ -80,6 +80,48 @@ class ApiClient {
       
       // If response is not ok, throw an error with the parsed data
       if (!response.ok) {
+
+        // Debug: Log all error responses
+        console.error(`${response.status} Error - Full response:`, {
+          status: response.status,
+          statusText: response.statusText,
+          url: response.url,
+          data: data
+        })
+        
+        // Better error message extraction
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`
+        
+        if (data) {
+          if (typeof data === 'string') {
+            errorMessage = data
+          } else if (data.message) {
+            errorMessage = data.message
+          } else if (data.error) {
+            errorMessage = data.error
+          } else if (data.validationErrors && Array.isArray(data.validationErrors)) {
+            // Handle custom validation errors
+            errorMessage = data.validationErrors.join(', ')
+          } else if (data.details) {
+            if (Array.isArray(data.details)) {
+              // Handle express-validator errors
+              errorMessage = data.details.map(d => {
+                if (d.msg) return `${d.param}: ${d.msg}`
+                if (d.message) return `${d.param}: ${d.message}`
+                return JSON.stringify(d)
+              }).join(', ')
+            } else {
+              errorMessage = data.details
+            }
+          } else if (typeof data === 'object') {
+            // Try to extract meaningful information from complex objects
+            errorMessage = JSON.stringify(data)
+          } else {
+            errorMessage = String(data)
+          }
+        }
+        
+
         // Debug: Log validation errors
         console.error(`${response.status} Error - Full response:`, data)
         
@@ -351,6 +393,97 @@ class ApiClient {
 
   async getLeadsForFollowUp() {
     return this.request('/leads/follow-up')
+  }
+
+  // Proposals methods
+  async generateProposal(proposalData) {
+    console.log('API Client: Generating proposal with data:', proposalData)
+    try {
+      const result = await this.request('/proposals/generate', {
+        method: 'POST',
+        body: JSON.stringify(proposalData)
+      })
+      console.log('API Client: Proposal generation result:', result)
+      return result
+    } catch (error) {
+      console.error('API Client: Error generating proposal:', error)
+      throw error
+    }
+  }
+
+  async getLeadProposals(leadId) {
+    return this.request(`/proposals/lead/${leadId}`)
+  }
+
+  async getProposal(id) {
+    return this.request(`/proposals/${id}`)
+  }
+
+  async downloadProposal(id) {
+    const response = await fetch(`${this.baseURL}/proposals/${id}/download`, {
+      headers: {
+        'Authorization': `Bearer ${getAccessToken()}`
+      }
+    })
+    
+    if (!response.ok) {
+      throw new Error('Failed to download proposal')
+    }
+    
+    return response.blob()
+  }
+
+  async viewProposal(id) {
+    // Create a URL with authentication token for viewing the proposal
+    const token = getAccessToken();
+    const url = `${this.baseURL}/proposals/${id}/view`;
+    
+    // Open the URL in a new tab with authentication
+    const newWindow = window.open('', '_blank');
+    
+    // Fetch the PDF with authentication and create a blob URL
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to load proposal');
+      }
+      
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      
+      // Navigate the new window to the blob URL
+      newWindow.location.href = blobUrl;
+      
+      return blobUrl;
+    } catch (error) {
+      newWindow.close();
+      throw error;
+    }
+  }
+
+  async sendProposal(id, emailData) {
+    return this.request(`/proposals/${id}/send`, {
+      method: 'POST',
+      body: JSON.stringify(emailData)
+    })
+  }
+
+  async updateProposalStatus(id, status) {
+    return this.request(`/proposals/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status })
+    })
+  }
+
+  async deleteProposal(id) {
+    return this.request(`/proposals/${id}`, {
+      method: 'DELETE'
+    })
   }
 
   // Clients methods
@@ -715,6 +848,47 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(noteData)
     })
+  }
+
+  // Milestone methods
+  async addProjectMilestone(projectId, milestoneData) {
+    return this.request(`/projects/${projectId}/milestones`, {
+      method: 'POST',
+      body: JSON.stringify(milestoneData)
+    })
+  }
+
+  async updateProjectMilestone(projectId, milestoneId, milestoneData) {
+    return this.request(`/projects/${projectId}/milestones/${milestoneId}`, {
+      method: 'PUT',
+      body: JSON.stringify(milestoneData)
+    })
+  }
+
+  async deleteProjectMilestone(projectId, milestoneId) {
+    return this.request(`/projects/${projectId}/milestones/${milestoneId}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async updateProjectProgress(projectId, progress) {
+    return this.request(`/projects/${projectId}/progress`, {
+      method: 'PATCH',
+      body: JSON.stringify({ progress })
+    })
+  }
+
+  // Client notification methods
+  async notifyClient(projectId, notificationData) {
+    return this.request(`/projects/${projectId}/notify-client`, {
+      method: 'POST',
+      body: JSON.stringify(notificationData)
+    })
+  }
+
+  // Public project view
+  async getPublicProject(projectId) {
+    return this.request(`/public/projects/${projectId}`)
   }
 
   // Generic HTTP methods for convenience

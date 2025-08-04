@@ -24,7 +24,7 @@ import {
   Users,
   Target,
   TrendingUp,
-  DollarSign
+  DollarSign,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import apiClient from '../lib/api-client'
@@ -41,6 +41,7 @@ const Projects = () => {
   const [showFilters, setShowFilters] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [clients, setClients] = useState([])
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1) 
@@ -174,6 +175,11 @@ const Projects = () => {
       return
     }
     
+    if (!formData.clientId) {
+      toast.error('Client selection is required')
+      return
+    }
+    
     if (!formData.startDate) {
       toast.error('Start date is required')
       return
@@ -274,6 +280,22 @@ const Projects = () => {
 
   useEffect(() => {
     loadProjects()
+  }, [])
+
+  // Load clients for project creation
+  useEffect(() => {
+    const loadClients = async () => {
+      try {
+        const result = await apiClient.getClients({ limit: 100 })
+        if (result.success) {
+          setClients(result.data)
+        }
+      } catch (error) {
+        console.error('Error loading clients:', error)
+      }
+    }
+    
+    loadClients()
   }, [])
 
   const getStatusColor = (status) => {
@@ -685,14 +707,27 @@ const Projects = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Client</label>
-                  <input
-                    type="text"
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Client <span className="text-red-400">*</span>
+                  </label>
+                  <select
                     value={formData.clientId}
                     onChange={(e) => handleInputChange('clientId', e.target.value)}
-                    className="w-full px-4 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all"
-                    placeholder="Client name"
-                  />
+                    className="w-full px-4 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all"
+                    required
+                  >
+                    <option value="" className="bg-slate-800">Select a client...</option>
+                    {clients && Array.isArray(clients) && clients.map((client) => (
+                      <option key={client._id} value={client._id} className="bg-slate-800">
+                        {client.firstName} {client.lastName} {client.company && `(${client.company})`}
+                      </option>
+                    ))}
+                  </select>
+                  {clients.length === 0 && (
+                    <p className="text-xs text-amber-400 mt-1">
+                      No clients found. Please create a client first.
+                    </p>
+                  )}
                 </div>
               </div>
 

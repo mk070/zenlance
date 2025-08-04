@@ -164,7 +164,7 @@ export const checkAccountLock = async (req, res, next) => {
 // Rate limiting for authentication endpoints
 export const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // Limit each IP to 10 requests per windowMs
+  max: 1000, // Limit each IP to 10 requests per windowMs
   message: {
     success: false,
     error: 'Too many authentication attempts, please try again later.',
