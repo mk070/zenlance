@@ -80,7 +80,10 @@ const ProjectDetails = () => {
     notes: '',
     category: '',
     estimatedHours: '',
-    hourlyRate: ''
+    hourlyRate: '',
+    requirements: {
+      scope: ''
+    }
   })
 
   const [taskFormData, setTaskFormData] = useState({
@@ -190,7 +193,8 @@ const ProjectDetails = () => {
             notes: result.data.notes || '',
             category: result.data.category || '',
             estimatedHours: result.data.estimatedHours || '',
-            hourlyRate: result.data.hourlyRate || ''
+            hourlyRate: result.data.hourlyRate || '',
+            requirements: result.data.requirements || { scope: '' }
           })
           
           // Initialize progress data
@@ -230,6 +234,15 @@ const ProjectDetails = () => {
     if (field === 'tags' && typeof value === 'string') {
       const tags = value.split(',').map(tag => tag.trim()).filter(tag => tag)
       setFormData(prev => ({ ...prev, tags }))
+    } else if (field.includes('.')) {
+      const [parent, child] = field.split('.')
+      setFormData(prev => ({
+        ...prev,
+        [parent]: {
+          ...prev[parent],
+          [child]: value
+        }
+      }))
     } else {
       setFormData(prev => ({ ...prev, [field]: value }))
     }
@@ -978,6 +991,16 @@ const ProjectDetails = () => {
                         />
                       </div>
                       <div>
+                        <label className="block text-sm font-medium text-slate-300 mb-2">Project Requirements</label>
+                        <textarea
+                          value={formData.requirements?.scope || ''}
+                          onChange={(e) => handleInputChange('requirements.scope', e.target.value)}
+                          rows={4}
+                          placeholder="Describe your project requirements including scope, deliverables, technical needs, business goals, timeline expectations, and any other important details..."
+                          className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 resize-none"
+                        />
+                      </div>
+                      <div>
                         <label className="block text-sm font-medium text-slate-300 mb-2">Client</label>
                         <select
                           value={formData.clientId || ''}
@@ -1055,6 +1078,17 @@ const ProjectDetails = () => {
                         <p className="text-white">
                           {project.description || 'No description provided'}
                         </p>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-1">Project Requirements</label>
+                        <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                          {project.requirements?.scope ? (
+                            <p className="text-white whitespace-pre-wrap">{project.requirements.scope}</p>
+                          ) : (
+                            <p className="text-slate-400 italic">No requirements specified</p>
+                          )}
+                        </div>
                       </div>
                       
                       {project.clientId && (

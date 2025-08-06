@@ -76,9 +76,9 @@ try {
   // Skip test OpenAI routes (not needed in sample mode)
   console.log('⚡ Skipping test OpenAI routes - using sample data mode');
 
-  const aiModule = await import('./routes/ai.js');
-  aiRoutes = aiModule.default;
-  console.log('✅ AI routes loaded');
+  // const aiModule = await import('./routes/ai.js');
+  // aiRoutes = aiModule.default;
+  // console.log('✅ AI routes loaded');
 
   
   // Import middleware
@@ -152,7 +152,7 @@ try {
   console.log('🔍 Setting up rate limiting...');
   const limiter = rateLimit({
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000, // Increased from 100 to 1000
     message: {
       error: 'Too many requests from this IP, please try again later.',
       resetTime: new Date(Date.now() + (parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000))
@@ -291,8 +291,8 @@ try {
   app.use('/api/public', publicRoutes);
   console.log('✅ Public routes mounted');
 
-  app.use('/api/ai', aiRoutes);
-  console.log('✅ AI routes mounted');
+  // app.use('/api/ai', aiRoutes);
+  // console.log('✅ AI routes mounted');
 
 } catch (error) {
   console.error('❌ Error mounting routes:', error);

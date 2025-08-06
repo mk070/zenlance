@@ -116,6 +116,15 @@ const leadSchema = new mongoose.Schema({
     trim: true,
     maxlength: [2000, 'Description cannot exceed 2000 characters']
   },
+  
+  // Enhanced requirements structure
+  requirements: {
+    scope: {
+      type: String,
+      trim: true,
+      maxlength: [3000, 'Requirements cannot exceed 3000 characters']
+    }
+  },
   notes: [{
     content: {
       type: String,

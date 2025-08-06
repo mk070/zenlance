@@ -37,6 +37,7 @@ import toast from 'react-hot-toast'
 import apiClient from '../lib/api-client'
 import ProposalModal from '../components/ProposalModal'
 import ProjectConversionModal from '../components/ProjectConversionModal'
+import QuoteForm from '../components/QuoteForm'
 import AIButton from '../components/ai/AIButton'
 import AISuggestionsPanel from '../components/ai/AISuggestionsPanel'
 import aiService from '../services/aiService'
@@ -59,6 +60,17 @@ const LeadDetails = () => {
 
   // Project conversion state
   const [showProjectModal, setShowProjectModal] = useState(false)
+  
+  // Quote creation state
+  const [showQuoteModal, setShowQuoteModal] = useState(false)
+  const [quoteFormData, setQuoteFormData] = useState(null)
+  const [creatingQuote, setCreatingQuote] = useState(false)
+  
+  // AI modals state
+  const [showAIEnrichModal, setShowAIEnrichModal] = useState(false)
+  const [showAIFollowUpModal, setShowAIFollowUpModal] = useState(false)
+  const [aiEnrichData, setAIEnrichData] = useState(null)
+  const [aiFollowUpData, setAIFollowUpData] = useState(null)
 
   // Define loadProposals function that can be reused
   const loadProposals = useCallback(async () => {
@@ -106,6 +118,9 @@ const LeadDetails = () => {
       endDate: '',
       urgency: 'Flexible'
     },
+    requirements: {
+      scope: ''
+    },
     interests: [],
     tags: []
   })
@@ -150,6 +165,7 @@ const LeadDetails = () => {
             priority: result.data.lead.priority || 'medium',
             budget: result.data.lead.budget || { min: 0, max: 0, currency: 'USD' },
             timeline: result.data.lead.timeline || { startDate: '', endDate: '', urgency: 'medium' },
+            requirements: result.data.lead.requirements || { scope: '' },
             interests: result.data.lead.interests || [],
             tags: result.data.lead.tags || []
           })
@@ -186,8 +202,123 @@ const LeadDetails = () => {
     // Close the modal
     setShowProposalModal(false)
     
+    // Update lead budget from proposal investment amount
+    if (proposal.content?.investment?.totalAmount) {
+      try {
+        const updatedBudget = {
+          min: proposal.content.investment.totalAmount,
+          max: proposal.content.investment.totalAmount,
+          currency: proposal.content.investment.currency || 'USD'
+        }
+        
+        const updateResult = await apiClient.updateLead(id, { budget: updatedBudget })
+        if (updateResult.success) {
+          setLead(prev => ({ ...prev, budget: updatedBudget }))
+          setFormData(prev => ({ ...prev, budget: updatedBudget }))
+          toast.success('Lead budget updated from proposal')
+        }
+      } catch (error) {
+        console.error('Error updating lead budget:', error)
+        // Don't show error toast as this is not critical
+      }
+    }
+    
     // Reload proposals to ensure we have the latest data
     await loadProposals()
+  }
+
+  // Quote creation is now handled in the Quotes page after project creation
+
+  const handleSaveQuote = async (formData) => {
+    try {
+      setCreatingQuote(true)
+      
+      // Find or create client
+      let clientId = formData.clientId
+      
+      if (!clientId && formData.clientEmail) {
+        // Try to find existing client by email
+        const clientsResult = await apiClient.getClients({ search: formData.clientEmail, limit: 1 })
+        if (clientsResult.success && clientsResult.data.clients?.length > 0) {
+          clientId = clientsResult.data.clients[0]._id
+        } else {
+          // Create client from form data
+          const clientData = {
+            firstName: lead.firstName || formData.clientName?.split(' ')[0] || 'Unknown',
+            lastName: lead.lastName || formData.clientName?.split(' ').slice(1).join(' ') || '',
+            email: formData.clientEmail,
+            phone: lead.phone || '',
+            company: lead.company || 'Unknown Company',
+            jobTitle: lead.jobTitle || '',
+            industry: lead.industry || 'Other',
+            acquisitionSource: 'Converted Lead',
+            status: 'Active',
+            type: 'Individual',
+            priority: lead.priority || 'Medium'
+          }
+          
+          const clientResult = await apiClient.createClient(clientData)
+          if (clientResult.success) {
+            clientId = clientResult.data._id
+          } else {
+            throw new Error('Failed to create client')
+          }
+        }
+      }
+      
+      if (!clientId) {
+        throw new Error('Client is required to create a quote')
+      }
+      
+      const quoteData = {
+        title: formData.title,
+        description: formData.description,
+        clientId: clientId,
+        validUntil: new Date(formData.validUntil),
+        items: formData.items.map(item => ({
+          itemType: item.itemType,
+          name: item.name,
+          description: item.description || '',
+          quantity: item.quantity,
+          unit: item.unit,
+          rate: item.rate,
+          amount: item.quantity * item.rate
+        })),
+        tax: formData.tax || 0,
+        discount: formData.discount || 0,
+        currency: formData.currency || 'USD',
+        notes: formData.notes || '',
+        proposalId: formData.proposalId,
+        projectId: formData.projectId, // Add project ID if available
+        subtotal: formData.items.reduce((sum, item) => sum + (item.quantity * item.rate), 0),
+        total: (() => {
+          const subtotal = formData.items.reduce((sum, item) => sum + (item.quantity * item.rate), 0)
+          const taxAmount = (subtotal * (formData.tax || 0)) / 100
+          const discountAmount = (subtotal * (formData.discount || 0)) / 100
+          return subtotal + taxAmount - discountAmount
+        })()
+      }
+      
+      console.log('Sending quote data:', JSON.stringify(quoteData, null, 2))
+      const result = await apiClient.createQuote(quoteData)
+      
+      if (result.success) {
+        const message = formData.projectId 
+          ? 'Quote created successfully for the project!' 
+          : 'Quote created successfully!'
+        toast.success(message)
+        setShowQuoteModal(false)
+        setQuoteFormData(null)
+      } else {
+        throw new Error(result.error || 'Failed to create quote')
+      }
+      
+    } catch (error) {
+      console.error('Error creating quote:', error)
+      toast.error(error.message || 'Failed to create quote')
+    } finally {
+      setCreatingQuote(false)
+    }
   }
 
   const handleProposalModalClose = () => {
@@ -337,24 +468,96 @@ const LeadDetails = () => {
     }
   }
 
+
+
   const handleConvertToClient = async () => {
-    if (!window.confirm('Are you sure you want to convert this lead to a client?')) {
+    if (!window.confirm('Are you sure you want to convert this lead to a client and create a project?')) {
       return
     }
 
     try {
       setSaving(true)
-      const result = await apiClient.convertLeadToClient(id)
+      let clientId = null
       
-      if (result.success) {
-        toast.success('Lead converted to client successfully!')
-        navigate('/clients')
+      // Check if lead is already converted first
+      if (lead.convertedToClient) {
+        toast('This lead has already been converted to a client. You can create a project for them.', { icon: 'ℹ️' })
+        setShowProjectModal(true)
+        return
+      }
+      
+      // First try to convert lead to client
+      try {
+        const result = await apiClient.convertLeadToClient(id)
+        
+        if (result.success) {
+          toast.success('Lead converted to client successfully!')
+          clientId = result.data.client._id
+          
+          // Update lead state immediately
+          setLead(prev => ({ 
+            ...prev, 
+            convertedToClient: true,
+            status: 'Converted'
+          }))
+        }
+      } catch (conversionError) {
+        console.log('Conversion error:', conversionError)
+        
+        // Check if the error is because client already exists
+        if (conversionError.message && conversionError.message.includes('client with this email already exists')) {
+          // Client already exists - just show project modal for manual creation
+          toast('Client with this email already exists. Please create the project manually.', { icon: 'ℹ️' })
+          setShowProjectModal(true)
+          
+          // Update lead status to reflect it's converted
+          setLead(prev => ({ 
+            ...prev, 
+            convertedToClient: true,
+            status: 'Converted'
+          }))
+          return
+        } else if (conversionError.message && conversionError.message.includes('Lead has already been converted to client')) {
+          // Lead already converted - show project modal and update lead status
+          toast('This lead has already been converted to a client. You can create a project for them.', { icon: 'ℹ️' })
+          setShowProjectModal(true)
+          
+          // Update lead status to reflect it's already converted
+          setLead(prev => ({ 
+            ...prev, 
+            convertedToClient: true,
+            status: 'Converted'
+          }))
+          return
+        } else {
+          // Other conversion errors
+          throw conversionError
+        }
+      }
+
+      // Always show the project modal for user to complete project creation
+      // This prevents duplicate project creation and ensures user can review/edit details
+      if (clientId) {
+        console.log('✅ Client ID available for project creation:', clientId)
+        toast('Client converted successfully! Please complete the project details.', { icon: '✅' })
+        setShowProjectModal(true)
       } else {
-        toast.error(result.error || 'Failed to convert lead')
+        console.warn('❌ No client ID available for project creation')
+        toast('Unable to get client information. Please create the project manually.', { icon: '⚠️' })
+        setShowProjectModal(true)
       }
     } catch (error) {
-      console.error('Error converting lead:', error)
-      toast.error('Failed to convert lead')
+      console.error('Error in convert to client process:', error)
+      
+      // Provide more specific error messages
+      if (error.message && error.message.includes('Validation error')) {
+        toast.error(`Validation error: ${error.message}`)
+      } else if (error.message && error.message.includes('priority')) {
+        toast.error('Invalid priority value. Please create the project manually.')
+        setShowProjectModal(true)
+      } else {
+        toast.error('Failed to convert lead. Please try again.')
+      }
     } finally {
       setSaving(false)
     }
@@ -365,14 +568,55 @@ const LeadDetails = () => {
     setShowProjectModal(true)
   }
 
-  const handleProjectCreated = (project) => {
+  const handleProjectCreated = async (project) => {
     console.log('🎉 Project created successfully:', project)
+    console.log('Project clientId type:', typeof project?.clientId, 'Value:', project?.clientId)
     
-    // Navigate to the new project
+    // Close the project modal
+    setShowProjectModal(false)
+    
+    try {
+      // Update lead status to indicate it has been converted to project
+      await apiClient.updateLead(id, { 
+        status: 'Won',
+        convertedToProject: true,
+        projectId: project._id
+      })
+      setLead(prev => ({ 
+        ...prev, 
+        status: 'Won',
+        convertedToProject: true,
+        projectId: project._id
+      }))
+    } catch (error) {
+      console.error('Error updating lead status:', error)
+    }
+    
+    // Navigate to Quotes page to create quote for the project
     if (project && project._id) {
-      navigate(`/projects/${project._id}`)
+      toast.success('Project created successfully!')
+      
+      // Extract proper client ID
+      let clientIdForQuote = null
+      if (project.clientId) {
+        if (typeof project.clientId === 'object' && project.clientId._id) {
+          clientIdForQuote = project.clientId._id
+        } else if (typeof project.clientId === 'string') {
+          clientIdForQuote = project.clientId
+        }
+      }
+      
+      if (clientIdForQuote) {
+        navigate(`/quotes?project=${project._id}&client=${clientIdForQuote}&source=project&leadId=${id}`)
+      } else {
+        console.warn('No valid clientId found in project:', project)
+        navigate(`/quotes?project=${project._id}&source=project&leadId=${id}`)
+      }
     } else {
-      navigate('/projects')
+      toast.success('Project created successfully!')
+      navigate('/quotes')
+    }
+  }
       
   const handleCreateProposal = async () => {
     try {
@@ -410,46 +654,78 @@ const LeadDetails = () => {
 
   const handleAIEnrichLead = async () => {
     try {
-      const result = await aiService.enrichLeadData(id)
-      if (result.success && result.data.enrichedData) {
-        const enrichedData = result.data.enrichedData
-        
-        // Update form data with enriched information
-        setFormData(prev => ({
-          ...prev,
-          industry: enrichedData.industry || prev.industry,
-          budget: {
-            ...prev.budget,
-            min: enrichedData.budgetRange?.min || prev.budget.min,
-            max: enrichedData.budgetRange?.max || prev.budget.max
-          }
-        }))
-        
-        toast.success('Lead data enriched with AI insights!')
+      // Generate mock AI enrichment data
+      const mockEnrichData = {
+        industry: lead.industry || 'Technology',
+        companySize: '50-200 employees',
+        budget: {
+          min: lead.budget?.min || 10000,
+          max: lead.budget?.max || 50000,
+          currency: lead.budget?.currency || 'USD'
+        },
+        timeline: {
+          startDate: lead.timeline?.startDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          endDate: lead.timeline?.endDate || new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          urgency: lead.timeline?.urgency || 'medium'
+        },
+        insights: [
+          'Company is actively expanding their digital presence',
+          'Recent funding round suggests healthy budget for new projects',
+          'Industry trend shows 23% growth in similar service demands',
+          'Decision maker appears to be actively evaluating solutions'
+        ],
+        recommendations: [
+          'Emphasize ROI and scalability in your proposal',
+          'Highlight relevant case studies from similar companies',
+          'Consider offering a pilot project to reduce perceived risk',
+          'Follow up within 3-5 days for optimal engagement'
+        ]
       }
+      
+      setAIEnrichData(mockEnrichData)
+      setShowAIEnrichModal(true)
     } catch (error) {
       console.error('AI enrichment error:', error)
+      toast.error('Failed to generate AI insights')
     }
   }
 
   const handleAIFollowUp = async () => {
     try {
-      const context = {
-        lastContactDate: lead.lastContactDate,
-        daysSinceContact: lead.daysSinceLastContact,
-        reason: 'follow_up'
+      // Generate mock AI follow-up email
+      const mockFollowUpData = {
+        subject: `Following up on our conversation - ${lead.company}`,
+        email: `Hi ${lead.firstName},
+
+I hope this email finds you well. I wanted to follow up on our recent conversation about ${lead.description || 'your project requirements'}.
+
+Based on our discussion, I believe we can help ${lead.company} achieve significant results with our ${lead.projectType || 'services'}. Here are a few key points that might interest you:
+
+• Our approach typically delivers ROI within the first 3-6 months
+• We've helped similar companies in the ${lead.industry || 'technology'} sector reduce costs by 25-40%
+• Our team brings over 10 years of experience in ${lead.projectType || 'digital solutions'}
+
+I'd love to schedule a brief 15-minute call to discuss how we can specifically help ${lead.company}. Are you available for a quick chat this week?
+
+Looking forward to hearing from you.
+
+Best regards,
+[Your Name]`,
+        nextSteps: [
+          'Send this email within the next 24 hours',
+          'Schedule a follow-up call for next week',
+          'Prepare a brief case study relevant to their industry',
+          'Consider sending a proposal draft if they respond positively'
+        ],
+        timing: 'Best to send: Tuesday-Thursday, 10 AM - 2 PM',
+        tone: 'Professional and consultative'
       }
       
-      const result = await aiService.generateFollowUpEmail(id, context)
-      if (result.success) {
-        // You could open an email composer or show the generated email
-        toast.success('AI follow-up email generated!')
-        
-        // For now, we'll just show the email in console or could add to notes
-        console.log('Generated email:', result.data.email)
-      }
+      setAIFollowUpData(mockFollowUpData)
+      setShowAIFollowUpModal(true)
     } catch (error) {
       console.error('AI follow-up error:', error)
+      toast.error('Failed to generate follow-up email')
     }
   }
 
@@ -571,7 +847,7 @@ const LeadDetails = () => {
                 </h1>
                 <div className="flex items-center space-x-4">
                   <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(lead.status)}`}>
-                    {statusOptions.find(opt => opt.value === lead.status)?.label || lead.status}
+                    {lead.convertedToProject ? 'Converted to Project' : (statusOptions.find(opt => opt.value === lead.status)?.label || lead.status)}
                   </span>
                   <span className={`text-sm ${getPriorityColor(lead.priority)}`}>
                     {priorityOptions.find(opt => opt.value === lead.priority)?.label || lead.priority} Priority
@@ -588,28 +864,33 @@ const LeadDetails = () => {
             
             <div className="flex items-center space-x-3">
 
-              {/* AI-powered buttons */}
-              <AIButton
-                onClick={handleAIEnrichLead}
-                icon={TrendingUp}
-                size="sm"
-                variant="secondary"
-              >
-                AI Enrich
-              </AIButton>
+              {/* AI-powered buttons - only show if not fully converted to project */}
+              {!lead.convertedToProject && (
+                <>
+                  <AIButton
+                    onClick={handleAIEnrichLead}
+                    icon={TrendingUp}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    AI Enrich
+                  </AIButton>
+                  
+                  <AIButton
+                    onClick={handleAIFollowUp}
+                    icon={Bot}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    AI Follow-up
+                  </AIButton>
+                </>
+              )}
               
-              <AIButton
-                onClick={handleAIFollowUp}
-                icon={Bot}
-                size="sm"
-                variant="secondary"
-              >
-                AI Follow-up
-              </AIButton>
-              
-              {lead.status !== 'Won' && lead.status !== 'Lost' && (
+              {/* Only show proposal creation if not converted to project and no proposals exist */}
+              {!lead.convertedToProject && lead.status !== 'Won' && lead.status !== 'Lost' && proposals.length === 0 && (
                 <motion.button
-                  onClick={handleCreateProposal}
+                  onClick={handleGenerateProposal}
                   disabled={saving}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
@@ -620,7 +901,8 @@ const LeadDetails = () => {
                 </motion.button>
               )}
               
-              {lead.status !== 'Won' && (
+              {/* Single Convert button - only show if not converted at all */}
+              {!lead.convertedToProject && !lead.convertedToClient && lead.status !== 'Won' && lead.status !== 'Lost' && (
                 <motion.button
                   onClick={handleConvertToClient}
                   disabled={saving}
@@ -629,9 +911,21 @@ const LeadDetails = () => {
                   className="flex items-center space-x-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl hover:bg-emerald-500/30 transition-all duration-200 disabled:opacity-50"
                 >
                   <UserCheck className="w-4 h-4" />
-                  <span>Convert to Client</span>
+                  <span>Convert to Client & Project</span>
                 </motion.button>
+              )}
 
+              {/* Clean final state - only show project link once fully converted */}
+              {lead.convertedToProject && lead.projectId && (
+                <motion.button
+                  onClick={() => navigate(`/projects/${lead.projectId}`)}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex items-center space-x-2 px-4 py-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-xl hover:bg-blue-500/30 transition-all duration-200"
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>View Project</span>
+                </motion.button>
               )}
               
               {!isEditing ? (
@@ -819,6 +1113,27 @@ const LeadDetails = () => {
                     />
                   ) : (
                     <p className="text-white">{lead.description || '-'}</p>
+                  )}
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Project Requirements</label>
+                  {isEditing ? (
+                    <textarea
+                      value={formData.requirements?.scope || ''}
+                      onChange={(e) => handleInputChange('requirements.scope', e.target.value)}
+                      rows={4}
+                      placeholder="Describe your project requirements including scope, deliverables, technical needs, business goals, timeline expectations, and any other important details..."
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-white/20"
+                    />
+                  ) : (
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                      {lead.requirements?.scope ? (
+                        <p className="text-white whitespace-pre-wrap">{lead.requirements.scope}</p>
+                      ) : (
+                        <p className="text-slate-400 italic">No requirements specified</p>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -1235,6 +1550,274 @@ const LeadDetails = () => {
         lead={lead}
         onProjectCreated={handleProjectCreated}
       />
+
+      {/* AI Enrich Modal */}
+      {showAIEnrichModal && aiEnrichData && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
+            className="bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-light text-white flex items-center">
+                <TrendingUp className="w-6 h-6 mr-3 text-purple-400" />
+                AI Lead Enrichment
+              </h3>
+              <button
+                onClick={() => setShowAIEnrichModal(false)}
+                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {/* Company Information */}
+              <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+                <h4 className="text-lg font-medium text-white mb-4">Company Intelligence</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-slate-300 mb-1">Industry</label>
+                    <p className="text-white font-medium">{aiEnrichData.industry}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-300 mb-1">Company Size</label>
+                    <p className="text-white font-medium">{aiEnrichData.companySize}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Budget & Timeline */}
+              <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+                <h4 className="text-lg font-medium text-white mb-4">Project Estimates</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm text-slate-300 mb-2">Estimated Budget</label>
+                    <p className="text-2xl font-bold text-green-400">
+                      ${aiEnrichData.budget.min.toLocaleString()} - ${aiEnrichData.budget.max.toLocaleString()} {aiEnrichData.budget.currency}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-300 mb-2">Timeline</label>
+                    <p className="text-white">
+                      {new Date(aiEnrichData.timeline.startDate).toLocaleDateString()} - {new Date(aiEnrichData.timeline.endDate).toLocaleDateString()}
+                    </p>
+                    <p className="text-sm text-slate-400 capitalize">Urgency: {aiEnrichData.timeline.urgency}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* AI Insights */}
+              <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+                <h4 className="text-lg font-medium text-white mb-4">AI Insights</h4>
+                <div className="space-y-3">
+                  {aiEnrichData.insights.map((insight, index) => (
+                    <div key={index} className="flex items-start space-x-3">
+                      <div className="w-6 h-6 bg-blue-500/20 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span className="text-blue-400 text-xs font-bold">{index + 1}</span>
+                      </div>
+                      <p className="text-slate-300 text-sm">{insight}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Recommendations */}
+              <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+                <h4 className="text-lg font-medium text-white mb-4">AI Recommendations</h4>
+                <div className="space-y-3">
+                  {aiEnrichData.recommendations.map((recommendation, index) => (
+                    <div key={index} className="flex items-start space-x-3">
+                      <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+                      <p className="text-slate-300 text-sm">{recommendation}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end space-x-4 pt-6 border-t border-white/10">
+                <button
+                  onClick={() => setShowAIEnrichModal(false)}
+                  className="px-6 py-3 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-all duration-200"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    // Apply the AI insights to the lead data
+                    setFormData(prev => ({
+                      ...prev,
+                      industry: aiEnrichData.industry,
+                      budget: aiEnrichData.budget,
+                      timeline: aiEnrichData.timeline
+                    }))
+                    toast.success('AI insights applied to lead data!')
+                    setShowAIEnrichModal(false)
+                  }}
+                  className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-200 font-medium"
+                >
+                  <TrendingUp className="w-5 h-5" />
+                  <span>Apply Insights</span>
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* AI Follow-up Modal */}
+      {showAIFollowUpModal && aiFollowUpData && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
+            className="bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-light text-white flex items-center">
+                <Bot className="w-6 h-6 mr-3 text-blue-400" />
+                AI Follow-up Email
+              </h3>
+              <button
+                onClick={() => setShowAIFollowUpModal(false)}
+                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {/* Email Content */}
+              <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+                <div className="mb-4">
+                  <label className="block text-sm text-slate-300 mb-2">Subject Line</label>
+                  <div className="bg-white/5 border border-white/10 rounded-lg p-3">
+                    <p className="text-white font-medium">{aiFollowUpData.subject}</p>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm text-slate-300 mb-2">Email Content</label>
+                  <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+                    <pre className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap font-sans">
+                      {aiFollowUpData.email}
+                    </pre>
+                  </div>
+                </div>
+              </div>
+
+              {/* Timing & Strategy */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+                  <h4 className="text-lg font-medium text-white mb-4">Timing</h4>
+                  <div className="flex items-center space-x-2">
+                    <Clock className="w-5 h-5 text-yellow-400" />
+                    <p className="text-slate-300 text-sm">{aiFollowUpData.timing}</p>
+                  </div>
+                </div>
+
+                <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+                  <h4 className="text-lg font-medium text-white mb-4">Tone</h4>
+                  <div className="flex items-center space-x-2">
+                    <MessageCircle className="w-5 h-5 text-purple-400" />
+                    <p className="text-slate-300 text-sm">{aiFollowUpData.tone}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Next Steps */}
+              <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+                <h4 className="text-lg font-medium text-white mb-4">Suggested Next Steps</h4>
+                <div className="space-y-3">
+                  {aiFollowUpData.nextSteps.map((step, index) => (
+                    <div key={index} className="flex items-start space-x-3">
+                      <div className="w-6 h-6 bg-blue-500/20 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span className="text-blue-400 text-xs font-bold">{index + 1}</span>
+                      </div>
+                      <p className="text-slate-300 text-sm">{step}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end space-x-4 pt-6 border-t border-white/10">
+                <button
+                  onClick={() => setShowAIFollowUpModal(false)}
+                  className="px-6 py-3 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-all duration-200"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    // Copy email to clipboard
+                    navigator.clipboard.writeText(aiFollowUpData.email)
+                    toast.success('Email copied to clipboard!')
+                  }}
+                  className="flex items-center space-x-2 px-6 py-3 bg-white/10 text-white border border-white/20 rounded-xl hover:bg-white/20 transition-all duration-200"
+                >
+                  <FileText className="w-5 h-5" />
+                  <span>Copy Email</span>
+                </button>
+                <button
+                  onClick={() => {
+                    // Open email client
+                    const emailUrl = `mailto:${lead.email}?subject=${encodeURIComponent(aiFollowUpData.subject)}&body=${encodeURIComponent(aiFollowUpData.email)}`
+                    window.open(emailUrl, '_blank')
+                    toast.success('Opening email client...')
+                  }}
+                  className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 font-medium"
+                >
+                  <Mail className="w-5 h-5" />
+                  <span>Send Email</span>
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Quote Creation Modal */}
+      {showQuoteModal && quoteFormData && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
+            className="bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-light text-white flex items-center">
+                <FileText className="w-6 h-6 mr-3 text-blue-400" />
+                Complete Quote Details
+              </h3>
+              <button
+                onClick={() => {
+                  setShowQuoteModal(false)
+                  setQuoteFormData(null)
+                }}
+                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <QuoteForm
+              initialData={quoteFormData}
+              onSave={handleSaveQuote}
+              onCancel={() => {
+                setShowQuoteModal(false)
+                setQuoteFormData(null)
+              }}
+              saving={creatingQuote}
+            />
+          </motion.div>
+        </div>
+      )}
     </div>
   )
 }

@@ -42,6 +42,7 @@ const Projects = () => {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [saving, setSaving] = useState(false)
   const [clients, setClients] = useState([])
+  const [loadingClients, setLoadingClients] = useState(false)
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1) 
@@ -170,13 +171,23 @@ const Projects = () => {
   const handleSaveProject = async (e) => {
     e.preventDefault()
     
+    console.log('Form data:', formData) // Debug log
+    console.log('Available clients:', clients) // Debug log
+    
     if (!formData.name.trim()) {
       toast.error('Project name is required')
       return
     }
     
     if (!formData.clientId) {
-      toast.error('Client selection is required')
+      toast.error('Please select a client')
+      return
+    }
+    
+    // Verify the selected client exists
+    const selectedClient = clients.find(c => c._id === formData.clientId)
+    if (!selectedClient) {
+      toast.error('Selected client is invalid. Please refresh and try again.')
       return
     }
     
@@ -286,12 +297,22 @@ const Projects = () => {
   useEffect(() => {
     const loadClients = async () => {
       try {
+        setLoadingClients(true)
         const result = await apiClient.getClients({ limit: 100 })
+        console.log('Clients loaded:', result) // Debug log
         if (result.success) {
-          setClients(result.data)
+          setClients(result.data.clients || [])
+        } else {
+          console.error('Failed to load clients:', result.error)
+          setClients([])
+          toast.error('Failed to load clients')
         }
       } catch (error) {
         console.error('Error loading clients:', error)
+        setClients([])
+        toast.error('Error loading clients')
+      } finally {
+        setLoadingClients(false)
       }
     }
     
@@ -710,22 +731,72 @@ const Projects = () => {
                   <label className="block text-sm font-medium text-slate-300 mb-2">
                     Client <span className="text-red-400">*</span>
                   </label>
-                  <select
-                    value={formData.clientId}
-                    onChange={(e) => handleInputChange('clientId', e.target.value)}
-                    className="w-full px-4 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all"
-                    required
-                  >
-                    <option value="" className="bg-slate-800">Select a client...</option>
-                    {clients && Array.isArray(clients) && clients.map((client) => (
-                      <option key={client._id} value={client._id} className="bg-slate-800">
-                        {client.firstName} {client.lastName} {client.company && `(${client.company})`}
+                  {loadingClients ? (
+                    <div className="flex items-center justify-center py-3 bg-white/5 border border-white/10 rounded-xl">
+                      <div className="w-4 h-4 border-2 border-slate-400 border-t-white rounded-full animate-spin mr-2"></div>
+                      <span className="text-slate-400 text-sm">Loading clients...</span>
+                    </div>
+                  ) : (
+                    <select
+                      value={formData.clientId}
+                      onChange={(e) => handleInputChange('clientId', e.target.value)}
+                      className="w-full px-4 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all"
+                      required
+                    >
+                      <option value="" className="bg-slate-800">
+                        {clients.length === 0 ? 'No clients available' : 'Select a client...'}
                       </option>
-                    ))}
-                  </select>
-                  {clients.length === 0 && (
-                    <p className="text-xs text-amber-400 mt-1">
-                      No clients found. Please create a client first.
+                      {clients && Array.isArray(clients) && clients.map((client) => (
+                        <option key={client._id} value={client._id} className="bg-slate-800">
+                          {client.firstName} {client.lastName}
+                          {client.company && ` (${client.company})`}
+                          {client.email && ` - ${client.email}`}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  
+                  {!loadingClients && clients.length === 0 && (
+                    <div className="flex items-center justify-between text-xs text-amber-400 mt-1">
+                      <span>
+                        No clients found. Please <button 
+                          type="button"
+                          onClick={() => navigate('/clients')}
+                          className="text-cyan-400 hover:text-cyan-300 underline"
+                        >
+                          create a client
+                        </button> first.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLoadingClients(true)
+                          const loadClients = async () => {
+                            try {
+                              const result = await apiClient.getClients({ limit: 100 })
+                              if (result.success) {
+                                setClients(result.data.clients || [])
+                                toast.success('Clients refreshed')
+                              }
+                            } catch (error) {
+                              console.error('Error refreshing clients:', error)
+                              toast.error('Failed to refresh clients')
+                            } finally {
+                              setLoadingClients(false)
+                            }
+                          }
+                          loadClients()
+                        }}
+                        className="text-cyan-400 hover:text-cyan-300 underline ml-2"
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                  )}
+                  
+                  {!loadingClients && clients.length > 0 && (
+                    <p className="text-xs text-slate-400 mt-1">
+                      {clients.length} client{clients.length !== 1 ? 's' : ''} available
                     </p>
                   )}
                 </div>

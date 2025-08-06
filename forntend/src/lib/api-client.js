@@ -125,7 +125,6 @@ class ApiClient {
         // Debug: Log validation errors
         console.error(`${response.status} Error - Full response:`, data)
         
-        const errorMessage = data.error || data.message || data.errors?.[0]?.message || `HTTP ${response.status}: ${response.statusText}`;
         const error = new Error(errorMessage);
         error.status = response.status;
         error.data = data;
@@ -604,14 +603,37 @@ class ApiClient {
     })
   }
 
-  async sendInvoice(invoiceId) {
+  async sendInvoice(invoiceId, emailData = {}) {
     return this.request(`/invoices/${invoiceId}/send`, {
-      method: 'POST'
+      method: 'POST',
+      body: JSON.stringify(emailData)
     })
   }
 
   async downloadInvoice(invoiceId) {
-    return this.request(`/invoices/${invoiceId}/download`)
+    const token = getAccessToken()
+    const url = `${this.baseURL}/invoices/${invoiceId}/download`
+    
+    const config = {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    }
+
+    try {
+      const response = await fetch(url, config)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      // Return the response directly for blob handling
+      return response
+    } catch (error) {
+      console.error('Download invoice failed:', error)
+      throw error
+    }
   }
 
   async getInvoiceStatistics() {
@@ -774,10 +796,37 @@ class ApiClient {
     })
   }
 
-  async sendQuote(quoteId) {
+  async sendQuote(quoteId, emailData = {}) {
     return this.request(`/quotes/${quoteId}/send`, {
-      method: 'POST'
+      method: 'POST',
+      body: JSON.stringify(emailData)
     })
+  }
+
+  async downloadQuote(quoteId) {
+    const token = getAccessToken()
+    const url = `${this.baseURL}/quotes/${quoteId}/download`
+    
+    const config = {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    }
+
+    try {
+      const response = await fetch(url, config)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      // Return the response directly for blob handling
+      return response
+    } catch (error) {
+      console.error('Download quote failed:', error)
+      throw error
+    }
   }
 
   async convertQuoteToInvoice(quoteId) {

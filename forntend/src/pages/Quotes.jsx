@@ -51,23 +51,49 @@ const Quotes = () => {
   const [showAIProposalGenerator, setShowAIProposalGenerator] = useState(false)
   const [selectedLeadForAI, setSelectedLeadForAI] = useState(null)
 
+  // Project conversion data
+  const [projectData, setProjectData] = useState(null)
+  const [clientData, setClientData] = useState(null)
+  const [leadData, setLeadData] = useState(null)
+
+  // Additional state for clients and projects
+  const [clients, setClients] = useState([])
+  const [projects, setProjects] = useState([])
+  const [filteredProjects, setFilteredProjects] = useState([])
+  const [loadingClients, setLoadingClients] = useState(false)
+  const [loadingProjects, setLoadingProjects] = useState(false)
+  
+  // Quote confirmation modal state
+  const [showQuoteConfirmation, setShowQuoteConfirmation] = useState(false)
+  const [pendingQuoteData, setPendingQuoteData] = useState(null)
+
   // Form data for creating quotes
   const [formData, setFormData] = useState({
     title: '',
     clientId: '',
+    clientName: '',
+    clientEmail: '',
     description: '',
     items: [{
+      itemType: 'service',
+      name: '',
       description: '',
       quantity: 1,
+      unit: 'piece',
       rate: 0,
       amount: 0
     }],
     subtotal: 0,
     tax: 0,
+    taxAmount: 0,
+    discount: 0,
+    discountAmount: 0,
     total: 0,
+    currency: 'USD',
     validUntil: '',
     notes: '',
-    terms: ''
+    terms: '',
+    projectId: '' // For project quotes - REQUIRED
   })
 
   const statusOptions = [
@@ -130,6 +156,123 @@ const Quotes = () => {
     loadQuotes(newPage, searchQuery, statusFilter)
   }
 
+  const loadClients = async () => {
+    try {
+      setLoadingClients(true)
+      const result = await apiClient.getClients()
+      if (result.success) {
+        setClients(result.data.clients || [])
+      }
+    } catch (error) {
+      console.error('Error loading clients:', error)
+      toast.error('Failed to load clients')
+    } finally {
+      setLoadingClients(false)
+    }
+  }
+
+  const loadProjects = async () => {
+    try {
+      setLoadingProjects(true)
+      const result = await apiClient.getProjects()
+      
+      if (result.success) {
+        // Fix: Projects are in result.data directly, not result.data.projects
+        const projectsData = Array.isArray(result.data) ? result.data : (result.data.projects || [])
+        setProjects(projectsData)
+        console.log(`Loaded ${projectsData.length} projects:`, projectsData)
+        
+        // If a client is already selected, filter projects for that client
+        if (formData.clientId) {
+          const clientProjects = projectsData.filter(project => {
+            if (typeof project.clientId === 'string') {
+              return project.clientId === formData.clientId
+            } else if (typeof project.clientId === 'object' && project.clientId?._id) {
+              return project.clientId._id === formData.clientId
+            }
+            return false
+          })
+          setFilteredProjects(clientProjects)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading projects:', error)
+      toast.error('Failed to load projects')
+    } finally {
+      setLoadingProjects(false)
+    }
+  }
+
+  const loadProjectsForClient = async (clientId, clientEmail = null) => {
+    try {
+      setLoadingProjects(true)
+      console.log('Loading projects for client ID:', clientId, 'Email:', clientEmail)
+      
+      // First try with client ID
+      let result = await apiClient.getProjects({ client: clientId })
+      let projectsData = result.success ? (Array.isArray(result.data) ? result.data : (result.data.projects || [])) : []
+      
+      console.log(`Found ${projectsData.length} projects using client ID`)
+      
+      // If no projects found with ID and we have email, try searching by email
+      if (projectsData.length === 0 && clientEmail) {
+        console.log('No projects found with client ID, trying with email:', clientEmail)
+        
+        // Load all projects and filter by client email
+        const allProjectsResult = await apiClient.getProjects()
+        if (allProjectsResult.success) {
+          const allProjects = Array.isArray(allProjectsResult.data) ? allProjectsResult.data : (allProjectsResult.data.projects || [])
+          console.log('Total projects loaded:', allProjects.length)
+          
+          // Filter projects that belong to this client (by email or ID)
+          projectsData = allProjects.filter(project => {
+            const projectClient = project.clientId
+            
+            // Check if clientId is populated with client data
+            if (typeof projectClient === 'object' && projectClient) {
+              const match = projectClient.email === clientEmail || projectClient._id === clientId
+              if (match) {
+                console.log('Found matching project:', project.name, 'Client email:', projectClient.email)
+              }
+              return match
+            }
+            
+            // Check if clientId is just a string ID
+            if (typeof projectClient === 'string') {
+              const match = projectClient === clientId
+              if (match) {
+                console.log('Found matching project by ID:', project.name)
+              }
+              return match
+            }
+            
+            return false
+          })
+          
+          console.log(`Filtered ${projectsData.length} projects by email/ID`)
+        }
+      }
+      
+      console.log(`Final result: ${projectsData.length} projects for client`, projectsData)
+      
+      // Update both all projects and filtered projects
+      setProjects(projectsData.length > 0 ? projectsData : projects) // Keep existing if none found
+      setFilteredProjects(projectsData)
+      
+      if (projectsData.length === 0) {
+        console.log('No projects found for this client')
+        toast(`No projects found for client ${clientEmail || clientId}`, { icon: 'ℹ️' })
+      }
+      
+    } catch (error) {
+      console.error('Error loading projects for client:', error)
+      toast.error('Failed to load projects for client')
+      setFilteredProjects([])
+    } finally {
+      setLoadingProjects(false)
+    }
+  }
+
   const handleInputChange = (field, value) => {
     if (field.includes('.')) {
       const [parent, child] = field.split('.')
@@ -145,6 +288,60 @@ const Quotes = () => {
         ...prev,
         [field]: value
       }))
+      
+      // Auto-populate client details when clientId changes
+      if (field === 'clientId' && value) {
+        const selectedClient = clients.find(client => client._id === value)
+        if (selectedClient) {
+          const clientEmail = selectedClient.email || selectedClient.contactEmail
+          
+          setFormData(prev => ({
+            ...prev,
+            clientName: selectedClient.name || `${selectedClient.firstName || ''} ${selectedClient.lastName || ''}`.trim() || 'Unknown Client',
+            clientEmail: clientEmail || 'unknown@email.com',
+            projectId: '' // Reset project selection when client changes
+          }))
+          
+          // Load projects specifically for this client using their ID and email
+          console.log('Loading projects for client:', selectedClient.firstName, selectedClient.lastName, 'ID:', value, 'Email:', clientEmail)
+          loadProjectsForClient(value, clientEmail)
+        }
+      } else if (field === 'clientId' && !value) {
+        // Clear filtered projects when no client is selected
+        setFilteredProjects([])
+        setFormData(prev => ({
+          ...prev,
+          projectId: ''
+        }))
+      }
+
+      // Auto-populate project details when projectId changes
+      if (field === 'projectId' && value) {
+        const selectedProject = projects.find(project => project._id === value)
+        if (selectedProject) {
+          setFormData(prev => ({
+            ...prev,
+            title: `Quote for ${selectedProject.name}`,
+            description: selectedProject.description || `Quote for project: ${selectedProject.name}`,
+            items: [{
+              itemType: 'service',
+              name: selectedProject.name || 'Project Services',
+              description: selectedProject.description || `Services for project: ${selectedProject.name}`,
+              quantity: 1,
+              unit: 'project',
+              rate: selectedProject.budget || 0,
+              amount: selectedProject.budget || 0
+            }],
+            subtotal: selectedProject.budget || 0,
+            total: selectedProject.budget || 0
+          }))
+        }
+      }
+      
+      // Convert validUntil string to Date object
+      if (field === 'validUntil' && value && typeof value === 'string') {
+        value = new Date(value)
+      }
     }
   }
 
@@ -209,15 +406,42 @@ const Quotes = () => {
       return
     }
     
+    if (!formData.clientId) {
+      toast.error('Client is required')
+      return
+    }
+    
+    if (!formData.projectId || !formData.projectId.trim()) {
+      toast.error('Project selection is required')
+      return
+    }
+    
     if (!formData.validUntil) {
       toast.error('Valid until date is required')
       return
     }
     
+    // Prepare data for API - convert validUntil to Date if it's a string
+    const apiData = {
+      ...formData,
+      validUntil: typeof formData.validUntil === 'string' ? new Date(formData.validUntil) : formData.validUntil,
+      // Generate a temporary quote number if not present (backend should override this)
+      quoteNumber: formData.quoteNumber || `QT-${Date.now()}`
+    }
+    
+    // Show confirmation modal instead of directly creating
+    setPendingQuoteData(apiData)
+    setShowQuoteConfirmation(true)
+  }
+
+  const handleConfirmQuoteCreation = async () => {
+    if (!pendingQuoteData) return
+    
     setSaving(true)
     
     try {
-      const result = await apiClient.createQuote(formData)
+      console.log('Creating quote with confirmed data:', JSON.stringify(pendingQuoteData, null, 2))
+      const result = await apiClient.createQuote(pendingQuoteData)
       
       if (result.success) {
         toast.success('Quote created successfully!')
@@ -225,21 +449,35 @@ const Quotes = () => {
         setFormData({
           title: '',
           clientId: '',
+          clientName: '',
+          clientEmail: '',
           description: '',
           items: [{
+            itemType: 'service',
+            name: '',
             description: '',
             quantity: 1,
+            unit: 'piece',
             rate: 0,
             amount: 0
           }],
           subtotal: 0,
           tax: 0,
+          taxAmount: 0,
+          discount: 0,
+          discountAmount: 0,
           total: 0,
+          currency: 'USD',
           validUntil: '',
           notes: '',
-          terms: ''
+          terms: '',
+          projectId: '' // REQUIRED FIELD
         })
         loadQuotes()
+        
+        // Close confirmation modal and reset
+        setShowQuoteConfirmation(false)
+        setPendingQuoteData(null)
       } else {
         toast.error(result.error || 'Failed to create quote')
       }
@@ -260,6 +498,12 @@ const Quotes = () => {
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleCancelQuoteCreation = () => {
+    setShowQuoteConfirmation(false)
+    setPendingQuoteData(null)
+    setSaving(false)
   }
 
   const handleDuplicateQuote = async (quoteId) => {
@@ -330,17 +574,150 @@ const Quotes = () => {
     }
   }
 
+  const handleProjectConversion = async (projectId, clientId, leadId) => {
+    try {
+      console.log('Loading data for:', { projectId, clientId, leadId })
+      
+      // First load the project to get the client ID if not provided
+      const projectResult = await apiClient.getProject(projectId)
+      
+      if (!projectResult.success) {
+        throw new Error('Failed to load project')
+      }
+
+      const project = projectResult.data
+      console.log('Loaded project data:', project)
+      
+      // Use provided clientId or extract from project
+      let actualClientId = clientId
+      if (!clientId || typeof clientId !== 'string' || clientId === '[object Object]') {
+        if (project.clientId) {
+          if (typeof project.clientId === 'object' && project.clientId._id) {
+            actualClientId = project.clientId._id
+          } else if (typeof project.clientId === 'string') {
+            actualClientId = project.clientId
+          }
+        }
+      }
+
+      if (!actualClientId) {
+        console.error('No valid clientId found in project or URL')
+        toast.error('No client associated with this project.')
+        setShowCreateForm(true)
+        return
+      }
+
+      console.log('Using clientId:', actualClientId)
+      
+      // Load client and lead data
+      const [clientResult, leadResult] = await Promise.all([
+        apiClient.getClient(actualClientId),
+        leadId ? apiClient.getLead(leadId) : Promise.resolve(null)
+      ])
+
+      if (clientResult.success) {
+        const client = clientResult.data.client || clientResult.data
+        const lead = leadResult?.success ? leadResult.data.lead : null
+
+        setProjectData(project)
+        setClientData(client)
+        setLeadData(lead)
+
+        // Always show form with pre-filled data for user confirmation
+        await prefillQuoteFromProject(project, client, lead)
+
+      } else {
+        toast.error('Failed to load project or client data')
+        setShowCreateForm(true) // Fallback to empty form
+      }
+    } catch (error) {
+      console.error('Error loading project conversion data:', error)
+      toast.error('Failed to load project data. You can create a quote manually.')
+      setShowCreateForm(true) // Fallback to empty form
+    }
+  }
+
+
+
+  const prefillQuoteFromProject = async (project, client, lead) => {
+    // Pre-fill form with project and client data
+    setFormData({
+      title: `Quote for ${project.name}`,
+      clientId: client._id,
+      clientName: client.name || `${client.firstName || ''} ${client.lastName || ''}`.trim() || 'Unknown Client',
+      clientEmail: client.email || client.contactEmail || 'unknown@email.com',
+      description: project.description || `Quote for project: ${project.name}`,
+      items: [{
+        itemType: 'service',
+        name: project.name || 'Project Services',
+        description: project.description || `Services for project: ${project.name}`,
+        quantity: 1,
+        unit: 'project',
+        rate: project.budget || 0,
+        amount: project.budget || 0
+      }],
+      subtotal: project.budget || 0,
+      tax: 0,
+      taxAmount: 0,
+      discount: 0,
+      discountAmount: 0,
+      total: project.budget || 0,
+            currency: project.currency || 'USD',
+      validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days from now
+      notes: `Quote for project: ${project.name}${lead ? ` (Converted from lead)` : ''}`,
+      terms: '',
+      projectId: project._id
+    })
+
+    setShowCreateForm(true)
+    
+    toast.success('Project loaded! Please review and complete the quote details.', {
+      duration: 4000
+    })
+  }
+
+  // Effect to filter projects when clientId changes in formData
+  useEffect(() => {
+    if (formData.clientId && projects.length > 0) {
+      const clientProjects = projects.filter(project => {
+        if (typeof project.clientId === 'string') {
+          return project.clientId === formData.clientId
+        } else if (typeof project.clientId === 'object' && project.clientId?._id) {
+          return project.clientId._id === formData.clientId
+        }
+        return false
+      })
+      setFilteredProjects(clientProjects)
+      console.log(`Filtered ${clientProjects.length} projects for client ${formData.clientId}`)
+      
+      // Verify that the selected project exists in the filtered list
+      if (formData.projectId) {
+        const projectExists = clientProjects.find(p => p._id === formData.projectId)
+        if (projectExists) {
+          console.log('Selected project found in filtered list:', projectExists.name)
+        } else {
+          console.warn('Selected project not found in filtered list:', formData.projectId)
+        }
+      }
+    } else if (!formData.clientId) {
+      setFilteredProjects([])
+    }
+  }, [formData.clientId, formData.projectId, projects])
+
   useEffect(() => {
     loadQuotes()
+    loadClients()
+    loadProjects()
     
-    // Handle URL parameters from lead conversion
+    // Handle URL parameters from lead conversion or project creation
     const urlParams = new URLSearchParams(location.search)
     const clientId = urlParams.get('client')
+    const projectId = urlParams.get('project')
     const source = urlParams.get('source')
     const leadId = urlParams.get('leadId')
     
-    if (clientId && source === 'lead') {
-      // Pre-fill form with client and show create form
+    if (source === 'lead' && clientId) {
+      // Pre-fill form with client and show create form (legacy lead conversion)
       setFormData(prev => ({
         ...prev,
         clientId: clientId
@@ -359,6 +736,10 @@ const Quotes = () => {
           clientId: clientId
         })
       }
+    } else if (source === 'project' && projectId) {
+      // Handle project conversion - load project and client data
+      console.log('Project conversion params:', { projectId, clientId, leadId })
+      handleProjectConversion(projectId, clientId, leadId)
     }
   }, [location.search])
 
@@ -647,7 +1028,12 @@ const Quotes = () => {
                 )}
               </div>
               <button
-                onClick={() => setShowCreateForm(false)}
+                onClick={() => {
+                  setShowCreateForm(false)
+                  setProjectData(null)
+                  setClientData(null)
+                  setLeadData(null)
+                }}
                 className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all duration-200"
               >
                 <X className="w-6 h-6" />
@@ -655,6 +1041,35 @@ const Quotes = () => {
             </div>
 
             <form onSubmit={handleSaveQuote} className="space-y-6">
+              {/* Project Information (if applicable) */}
+              {projectData && (
+                <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 mb-6">
+                  <h3 className="text-lg font-medium text-blue-400 mb-2">Project Quote</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-slate-300 text-sm">
+                        <span className="font-medium">Project:</span> {projectData.name}
+                      </p>
+                      {projectData.description && (
+                        <p className="text-slate-400 text-xs mt-1">{projectData.description}</p>
+                      )}
+                    </div>
+                    <div>
+                      {clientData && (
+                        <p className="text-slate-300 text-sm">
+                          <span className="font-medium">Client:</span> {clientData.firstName} {clientData.lastName}
+                        </p>
+                      )}
+                      {projectData.budget && (
+                        <p className="text-slate-300 text-sm">
+                          <span className="font-medium">Budget:</span> ${projectData.budget.toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Basic Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
@@ -669,28 +1084,118 @@ const Quotes = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Client *</label>
-                  <input
-                    type="text"
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-slate-300">Client *</label>
+                    <button
+                      type="button"
+                      onClick={loadClients}
+                      disabled={loadingClients}
+                      className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                    >
+                      🔄 Refresh
+                    </button>
+                  </div>
+                  <select
                     value={formData.clientId}
                     onChange={(e) => handleInputChange('clientId', e.target.value)}
+                    className="w-full px-4 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all"
+                    required
+                    disabled={loadingClients}
+                  >
+                    <option value="">
+                      {loadingClients ? 'Loading clients...' : 'Select a client'}
+                    </option>
+                    {clients.map(client => (
+                      <option key={client._id} value={client._id} className="bg-slate-800 text-white">
+                        {client.firstName} {client.lastName} ({client.email})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Client Details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Client Name *</label>
+                  <input
+                    type="text"
+                    value={formData.clientName}
+                    onChange={(e) => handleInputChange('clientName', e.target.value)}
                     className="w-full px-4 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all"
-                    placeholder="Client name or ID"
+                    placeholder="Client name"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Client Email *</label>
+                  <input
+                    type="email"
+                    value={formData.clientEmail}
+                    onChange={(e) => handleInputChange('clientEmail', e.target.value)}
+                    className="w-full px-4 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all"
+                    placeholder="client@email.com"
                     required
                   />
                 </div>
               </div>
 
               {/* Description */}
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">Description</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => handleInputChange('description', e.target.value)}
-                  rows={3}
-                  className="w-full px-4 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all resize-none"
-                  placeholder="Quote description"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Description</label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => handleInputChange('description', e.target.value)}
+                    rows={3}
+                    className="w-full px-4 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all resize-none"
+                    placeholder="Quote description"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-slate-300">
+                      Project <span className="text-red-400">*</span>
+                      <span className="text-xs text-slate-400 ml-2">(Required)</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (formData.clientId) {
+                          loadProjectsForClient(formData.clientId, formData.clientEmail)
+                        } else {
+                          loadProjects()
+                        }
+                      }}
+                      disabled={loadingProjects}
+                      className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                    >
+                      🔄 Refresh
+                    </button>
+                  </div>
+                  <select
+                    value={formData.projectId || ''}
+                    onChange={(e) => handleInputChange('projectId', e.target.value)}
+                    className={`w-full px-4 py-3 bg-white/5 backdrop-blur-sm border rounded-xl text-white focus:outline-none focus:ring-2 transition-all ${
+                      !formData.projectId ? 'border-red-400/50 focus:ring-red-400/50 focus:border-red-400/50' : 'border-white/10 focus:ring-cyan-400/50 focus:border-cyan-400/50'
+                    }`}
+                    disabled={loadingProjects || !formData.clientId}
+                    required
+                  >
+                                          <option value="">
+                        {loadingProjects ? 'Loading projects...' : 
+                         !formData.clientId ? 'Select a client first' :
+                         filteredProjects.length === 0 ? 'No projects found for this client' :
+                         'Select a project (required)'}
+                      </option>
+                                          {filteredProjects.map(project => (
+                        <option key={project._id} value={project._id} className="bg-slate-800 text-white">
+                          {project.name} - ${project.budget?.toLocaleString() || 'No budget'}
+                        </option>
+                      ))}
+                    </select>
+
+                  </div>
               </div>
 
               {/* Items */}
@@ -803,7 +1308,7 @@ const Quotes = () => {
                   <label className="block text-sm font-medium text-slate-300 mb-2">Valid Until *</label>
                   <input
                     type="date"
-                    value={formData.validUntil}
+                    value={formData.validUntil instanceof Date ? formData.validUntil.toISOString().split('T')[0] : formData.validUntil}
                     onChange={(e) => handleInputChange('validUntil', e.target.value)}
                     className="w-full px-4 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all"
                     required
@@ -839,7 +1344,12 @@ const Quotes = () => {
               <div className="flex justify-end space-x-4 pt-6 border-t border-white/10">
                 <button
                   type="button"
-                  onClick={() => setShowCreateForm(false)}
+                  onClick={() => {
+                    setShowCreateForm(false)
+                    setProjectData(null)
+                    setClientData(null)
+                    setLeadData(null)
+                  }}
                   className="px-6 py-3 border border-white/20 text-white rounded-xl hover:bg-white/5 transition-all duration-200"
                 >
                   Cancel
@@ -859,6 +1369,70 @@ const Quotes = () => {
               </div>
             </form>
           </motion.div>
+        </div>
+      )}
+
+      {/* Quote Creation Confirmation Modal */}
+      {showQuoteConfirmation && pendingQuoteData && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center">
+                <FileText className="w-6 h-6 text-blue-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">Confirm Quote Creation</h3>
+                <p className="text-slate-400 text-sm">Please review the quote details before creating</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              <div className="bg-slate-700/50 rounded-lg p-3">
+                <div className="text-sm text-slate-300">
+                  <div className="flex justify-between mb-1">
+                    <span className="text-slate-400">Quote Title:</span>
+                    <span className="font-medium">{pendingQuoteData.title}</span>
+                  </div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-slate-400">Client:</span>
+                    <span className="font-medium">{pendingQuoteData.clientName}</span>
+                  </div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-slate-400">Project:</span>
+                    <span className="font-medium">{projects.find(p => p._id === pendingQuoteData.projectId)?.name || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Total Amount:</span>
+                    <span className="font-semibold text-emerald-400">${pendingQuoteData.total?.toFixed(2)} {pendingQuoteData.currency}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex space-x-3">
+              <button
+                type="button"
+                onClick={handleCancelQuoteCreation}
+                disabled={saving}
+                className="flex-1 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-700 rounded-xl transition-all duration-200 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmQuoteCreation}
+                disabled={saving}
+                className="flex-1 flex items-center justify-center space-x-2 px-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 disabled:opacity-50 font-medium"
+              >
+                {saving ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <FileText className="w-6 h-6" />
+                )}
+                <span>{saving ? 'Creating...' : 'Create Quote'}</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

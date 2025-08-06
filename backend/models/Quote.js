@@ -203,7 +203,8 @@ const quoteSchema = new mongoose.Schema({
   },
   projectId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Project'
+    ref: 'Project',
+    required: [true, 'Project is required']
   },
 
   // Tracking Information
