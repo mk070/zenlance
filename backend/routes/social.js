@@ -3,8 +3,14 @@ import { body, validationResult, query } from 'express-validator';
 import SocialPost from '../models/SocialPost.js';
 import { catchAsync, AppError, handleValidationError } from '../middleware/errorMiddleware.js';
 import { authenticate } from '../middleware/authMiddleware.js';
+import SocialContentAgent from '../agents/socialContentAgent.js';
+import PersonalizedAIAgent from '../agents/personalizedAIAgent.js';
 
 const router = express.Router();
+
+// Initialize AI agents
+const socialContentAgent = new SocialContentAgent();
+const personalizedAIAgent = new PersonalizedAIAgent();
 
 // Apply authentication to all social routes
 router.use(authenticate);
@@ -426,5 +432,405 @@ router.get('/scheduled', catchAsync(async (req, res) => {
     data: scheduledPosts
   });
 }));
+
+// Generate fresh social media content using AI
+router.post('/generate-content', 
+  [
+    body('topic')
+      .trim()
+      .isLength({ min: 3, max: 500 })
+      .withMessage('Topic must be between 3 and 500 characters'),
+    body('tone')
+      .optional()
+      .isIn(['professional', 'casual', 'engaging', 'inspirational', 'humorous', 'educational'])
+      .withMessage('Invalid tone specified'),
+    body('platforms')
+      .optional()
+      .isArray()
+      .withMessage('Platforms must be an array'),
+    body('variations')
+      .optional()
+      .isInt({ min: 1, max: 5 })
+      .withMessage('Variations must be between 1 and 5')
+  ],
+  catchAsync(async (req, res) => {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { topic, tone = 'professional', platforms = [], variations = 3 } = req.body;
+
+    try {
+      const result = await socialContentAgent.generateContent(
+        topic,
+        tone,
+        platforms,
+        parseInt(variations)
+      );
+
+      if (result.success) {
+        res.json({
+          success: true,
+          message: `Generated ${result.data.length} content variations successfully`,
+          data: result.data,
+          metadata: result.metadata
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          message: 'Failed to generate content',
+          error: result.error
+        });
+      }
+    } catch (error) {
+      console.error('Content generation error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error during content generation',
+        error: error.message
+      });
+    }
+  })
+);
+
+// Rephrase existing social media content using AI
+router.post('/rephrase-content',
+  [
+    body('content')
+      .trim()
+      .isLength({ min: 10, max: 1000 })
+      .withMessage('Content must be between 10 and 1000 characters'),
+    body('tone')
+      .optional()
+      .isIn(['professional', 'casual', 'engaging', 'inspirational', 'humorous', 'educational'])
+      .withMessage('Invalid tone specified'),
+    body('platforms')
+      .optional()
+      .isArray()
+      .withMessage('Platforms must be an array'),
+    body('variations')
+      .optional()
+      .isInt({ min: 1, max: 5 })
+      .withMessage('Variations must be between 1 and 5')
+  ],
+  catchAsync(async (req, res) => {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { content, tone = 'professional', platforms = [], variations = 3 } = req.body;
+
+    try {
+      const result = await socialContentAgent.rephraseContent(
+        content,
+        tone,
+        platforms,
+        parseInt(variations)
+      );
+
+      if (result.success) {
+        res.json({
+          success: true,
+          message: `Rephrased content into ${result.data.length} variations successfully`,
+          data: result.data,
+          metadata: result.metadata
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          message: 'Failed to rephrase content',
+          error: result.error
+        });
+      }
+    } catch (error) {
+      console.error('Content rephrasing error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error during content rephrasing',
+        error: error.message
+      });
+    }
+  })
+);
+
+// Generate platform-specific content
+router.post('/generate-for-platform',
+  [
+    body('topic')
+      .trim()
+      .isLength({ min: 3, max: 500 })
+      .withMessage('Topic must be between 3 and 500 characters'),
+    body('platform')
+      .isIn(['twitter', 'linkedin', 'facebook', 'instagram'])
+      .withMessage('Invalid platform specified'),
+    body('tone')
+      .optional()
+      .isIn(['professional', 'casual', 'engaging', 'inspirational', 'humorous', 'educational'])
+      .withMessage('Invalid tone specified')
+  ],
+  catchAsync(async (req, res) => {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { topic, platform, tone = 'professional' } = req.body;
+
+    try {
+      const result = await socialContentAgent.generateForPlatform(
+        topic,
+        platform,
+        tone
+      );
+
+      if (result.success) {
+        res.json({
+          success: true,
+          message: `Generated ${platform}-optimized content successfully`,
+          data: result.data,
+          metadata: result.metadata
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          message: 'Failed to generate platform-specific content',
+          error: result.error
+        });
+      }
+    } catch (error) {
+      console.error('Platform-specific generation error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error during platform-specific generation',
+        error: error.message
+      });
+    }
+  })
+);
+
+// Analyze content statistics
+router.post('/analyze-content',
+  [
+    body('content')
+      .trim()
+      .isLength({ min: 1, max: 2000 })
+      .withMessage('Content must be between 1 and 2000 characters')
+  ],
+  catchAsync(async (req, res) => {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { content } = req.body;
+
+    try {
+      const analysis = socialContentAgent.analyzeContent(content);
+      
+      res.json({
+        success: true,
+        message: 'Content analyzed successfully',
+        data: analysis
+      });
+    } catch (error) {
+      console.error('Content analysis error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error during content analysis',
+        error: error.message
+      });
+    }
+  })
+);
+
+// Generate personalized business analytics
+router.post('/generate-analytics',
+  [
+    body('timeRange')
+      .optional()
+      .isIn(['week', 'month', 'quarter', 'year'])
+      .withMessage('Invalid time range'),
+    body('businessData')
+      .optional()
+      .isObject()
+      .withMessage('Business data must be an object')
+  ],
+  catchAsync(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { timeRange = 'month', businessData = {} } = req.body;
+    const userId = req.user._id;
+
+    try {
+      const result = await personalizedAIAgent.generatePersonalizedAnalytics(
+        userId,
+        timeRange,
+        businessData
+      );
+
+      if (result.success) {
+        res.json({
+          success: true,
+          message: 'Personalized analytics generated successfully',
+          data: result.data,
+          personalized: result.personalized,
+          context: result.context
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          message: 'Failed to generate analytics',
+          error: result.error
+        });
+      }
+    } catch (error) {
+      console.error('Analytics generation error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error during analytics generation',
+        error: error.message
+      });
+    }
+  })
+);
+
+// Generate personalized suggestions
+router.post('/generate-suggestions',
+  [
+    body('entityType')
+      .isIn(['lead', 'client', 'project', 'invoice', 'quote'])
+      .withMessage('Invalid entity type'),
+    body('entityData')
+      .optional()
+      .isObject()
+      .withMessage('Entity data must be an object')
+  ],
+  catchAsync(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { entityType, entityData = {} } = req.body;
+    const userId = req.user._id;
+
+    try {
+      const result = await personalizedAIAgent.generatePersonalizedSuggestions(
+        userId,
+        entityType,
+        entityData
+      );
+
+      if (result.success) {
+        res.json({
+          success: true,
+          message: 'Personalized suggestions generated successfully',
+          data: result.data,
+          personalized: result.personalized,
+          context: result.context
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          message: 'Failed to generate suggestions',
+          error: result.error
+        });
+      }
+    } catch (error) {
+      console.error('Suggestions generation error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error during suggestions generation',
+        error: error.message
+      });
+    }
+  })
+);
+
+// Generate personalized dashboard insights
+router.post('/generate-dashboard-insights',
+  [
+    body('dashboardData')
+      .optional()
+      .isObject()
+      .withMessage('Dashboard data must be an object')
+  ],
+  catchAsync(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { dashboardData = {} } = req.body;
+    const userId = req.user._id;
+
+    try {
+      const result = await personalizedAIAgent.generateDashboardInsights(
+        userId,
+        dashboardData
+      );
+
+      if (result.success) {
+        res.json({
+          success: true,
+          message: 'Dashboard insights generated successfully',
+          data: result.data,
+          personalized: result.personalized,
+          context: result.context
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          message: 'Failed to generate dashboard insights',
+          error: result.error
+        });
+      }
+    } catch (error) {
+      console.error('Dashboard insights generation error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error during dashboard insights generation',
+        error: error.message
+      });
+    }
+  })
+);
 
 export default router;

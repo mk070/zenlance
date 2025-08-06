@@ -10,6 +10,8 @@ import {
   RefreshCw
 } from 'lucide-react';
 import AIButton from './AIButton';
+import { useAuth } from '../../contexts/AuthContext';
+import apiClient from '../../lib/api-client';
 
 const AISuggestionsPanel = ({ 
   entityType, 
@@ -18,107 +20,67 @@ const AISuggestionsPanel = ({
   className = '',
   autoLoad = true 
 }) => {
+  const { user } = useAuth();
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isExpanded, setIsExpanded] = useState(true);
+  const [personalized, setPersonalized] = useState(false);
 
   const generateMockSuggestions = (entityType, entityId) => {
     const suggestionsByType = {
       lead: [
         {
           title: "Send follow-up email",
-          description: "It's been 3 days since last contact. A friendly follow-up could re-engage this lead.",
+          description: "Quick follow-up to check their interest",
           type: "email",
           priority: "medium",
           timeframe: "this_week"
         },
         {
-          title: "Schedule discovery call",
-          description: "Based on the lead's profile, they seem ready for a detailed discussion about their project needs.",
+          title: "Schedule call",
+          description: "Discuss project details and requirements",
           type: "call",
           priority: "high",
-          timeframe: "immediate"
-        },
-        {
-          title: "Research company background",
-          description: "Understanding their industry and recent company news will help personalize your approach.",
-          type: "research",
-          priority: "low",
           timeframe: "this_week"
         },
         {
-          title: "Prepare tailored proposal",
-          description: "Lead shows strong interest. Consider creating a customized proposal highlighting relevant experience.",
-          type: "proposal",
-          priority: "high",
+          title: "Send portfolio examples",
+          description: "Share relevant work samples",
+          type: "email",
+          priority: "medium",
           timeframe: "this_week"
-        },
-        {
-          title: "Connect on LinkedIn",
-          description: "Build a professional relationship by connecting on LinkedIn and engaging with their content.",
-          type: "social",
-          priority: "low",
-          timeframe: "this_month"
         }
       ],
       client: [
         {
-          title: "Schedule project check-in",
-          description: "Regular communication builds trust. Schedule a brief check-in to discuss project progress.",
-          type: "meeting",
+          title: "Send project update",
+          description: "Quick status update on current work",
+          type: "email",
           priority: "medium",
           timeframe: "this_week"
         },
         {
-          title: "Request testimonial",
-          description: "Client satisfaction is high. This is a great time to request a testimonial or review.",
-          type: "testimonial",
-          priority: "low",
-          timeframe: "this_month"
-        },
-        {
-          title: "Propose additional services",
-          description: "Based on project success, consider proposing complementary services that could add value.",
-          type: "upsell",
+          title: "Ask for feedback",
+          description: "Check if they're happy with progress",
+          type: "email",
           priority: "medium",
-          timeframe: "this_month"
-        },
-        {
-          title: "Send project milestone update",
-          description: "Keep client informed about upcoming milestones and deliverables to maintain transparency.",
-          type: "communication",
-          priority: "high",
-          timeframe: "immediate"
+          timeframe: "this_week"
         }
       ],
       project: [
         {
-          title: "Review project timeline",
-          description: "Check if current timeline is realistic and communicate any adjustments needed with client.",
+          title: "Check timeline",
+          description: "Review if project is on track",
           type: "planning",
           priority: "high",
-          timeframe: "immediate"
-        },
-        {
-          title: "Backup project files",
-          description: "Ensure all project files are properly backed up to prevent data loss.",
-          type: "maintenance",
-          priority: "medium",
           timeframe: "this_week"
         },
         {
-          title: "Quality assurance check",
-          description: "Perform thorough QA testing before next client presentation or milestone delivery.",
-          type: "quality",
+          title: "Test your work",
+          description: "Quick quality check before delivery",
+          type: "planning",
           priority: "high",
-          timeframe: "this_week"
-        },
-        {
-          title: "Document progress",
-          description: "Update project documentation to reflect current status and any changes made.",
-          type: "documentation",
-          priority: "low",
           timeframe: "this_week"
         }
       ],
@@ -187,11 +149,33 @@ const AISuggestionsPanel = ({
     setError(null);
 
     try {
-      // Simulate API delay for realistic feel
+      // Try to get personalized suggestions from API
+      if (user) {
+        try {
+          const response = await apiClient.post('/social/generate-suggestions', {
+            entityType,
+            entityData: {
+              entityId,
+              entityType,
+              // Add any additional entity-specific data here
+            }
+          });
+
+          if (response.data.success) {
+            setSuggestions(response.data.data);
+            setPersonalized(response.data.personalized);
+            return;
+          }
+        } catch (apiError) {
+          console.warn('Personalized suggestions failed, falling back to mock data:', apiError);
+        }
+      }
+
+      // Fallback to mock data if API fails or user not available
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
       const mockSuggestions = generateMockSuggestions(entityType, entityId);
       setSuggestions(mockSuggestions);
+      setPersonalized(false);
     } catch (err) {
       setError(err.message);
       console.error('Error loading AI suggestions:', err);
@@ -260,11 +244,18 @@ const AISuggestionsPanel = ({
         <div className="flex items-center space-x-2">
           <Lightbulb className="w-5 h-5 text-purple-400" />
           <h3 className="text-lg font-medium text-white">AI Suggestions</h3>
-          {suggestions.length > 0 && (
-            <span className="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs rounded-full">
-              {suggestions.length}
-            </span>
-          )}
+          <div className="flex items-center space-x-2">
+            {suggestions.length > 0 && (
+              <span className="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs rounded-full">
+                {suggestions.length}
+              </span>
+            )}
+            {personalized && (
+              <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded-full">
+                Personalized
+              </span>
+            )}
+          </div>
         </div>
         
         <div className="flex items-center space-x-2">
