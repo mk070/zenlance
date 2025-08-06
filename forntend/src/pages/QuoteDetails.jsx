@@ -188,15 +188,42 @@ const QuoteDetails = () => {
   }
 
   const handleSendQuote = async () => {
+    if (!quote.clientEmail) {
+      toast.error('Client email is required to send quote')
+      return
+    }
+
+    if (!window.confirm(`Send quote to ${quote.clientEmail}?`)) {
+      return
+    }
+
     try {
       setSending(true)
-      const result = await apiClient.sendQuote(id)
+      const result = await apiClient.sendQuote(id, {
+        to: quote.clientEmail,
+        subject: `Quote ${quote.quoteNumber} from ${quote.companyName || 'Your Company'}`,
+        message: `Dear ${quote.clientName || 'Valued Client'},
+
+Please find attached quote ${quote.quoteNumber} for your requested services.
+
+Quote Details:
+- Quote Number: ${quote.quoteNumber}
+- Total Amount: $${quote.total?.toLocaleString() || '0'}
+- Valid Until: ${quote.validUntil ? new Date(quote.validUntil).toLocaleDateString() : 'Please contact us for validity'}
+
+This quote includes all the services and features we discussed. Please review the details and let us know if you have any questions or would like to proceed.
+
+We're excited about the opportunity to work with you!
+
+Best regards,
+${quote.companyName || 'Your Company'}`
+      })
       
       if (result.success) {
-        setQuote(prev => ({ ...prev, status: 'sent' }))
-        toast.success('Quote sent successfully!')
+        setQuote(prev => ({ ...prev, status: 'sent', sentDate: new Date() }))
+        toast.success(`Quote sent successfully to ${quote.clientEmail}!`)
       } else {
-        toast.error('Failed to send quote')
+        toast.error(result.error || 'Failed to send quote')
       }
     } catch (error) {
       console.error('Error sending quote:', error)
@@ -237,6 +264,26 @@ const QuoteDetails = () => {
     } catch (error) {
       console.error('Error converting quote:', error)
       toast.error('Failed to convert quote to invoice')
+    }
+  }
+
+  const handleDownloadQuote = async () => {
+    try {
+      const response = await apiClient.downloadQuote(id)
+      // The response is the raw response object, get the blob
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `Quote-${quote.quoteNumber}.pdf`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+      toast.success('Quote downloaded successfully!')
+    } catch (error) {
+      console.error('Error downloading quote:', error)
+      toast.error('Failed to download quote')
     }
   }
 
@@ -649,7 +696,10 @@ const QuoteDetails = () => {
           {/* Action Buttons Footer */}
           <div className="flex items-center justify-between bg-black/20 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
             <div className="flex items-center space-x-4">
-              <button className="flex items-center space-x-2 text-slate-400 hover:text-white transition-colors">
+              <button 
+                onClick={handleDownloadQuote}
+                className="flex items-center space-x-2 text-slate-400 hover:text-white transition-colors"
+              >
                 <Download className="w-4 h-4" />
                 <span>Download PDF</span>
               </button>

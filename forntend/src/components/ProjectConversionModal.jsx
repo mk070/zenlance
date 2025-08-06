@@ -16,6 +16,8 @@ import apiClient from '../lib/api-client'
 const ProjectConversionModal = ({ isOpen, onClose, lead, onProjectCreated }) => {
   const [loading, setLoading] = useState(false)
   const [nameAvailable, setNameAvailable] = useState(true)
+  const [clients, setClients] = useState([])
+  const [loadingClients, setLoadingClients] = useState(false)
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -25,10 +27,36 @@ const ProjectConversionModal = ({ isOpen, onClose, lead, onProjectCreated }) => 
     currency: 'USD',
     startDate: '',
     endDate: '',
+    clientId: '',
     clientName: '',
     tags: [],
-    notes: ''
+    notes: '',
+    requirements: {
+      scope: ''
+    }
   })
+
+  // Load clients when modal opens
+  useEffect(() => {
+    const loadClients = async () => {
+      if (!isOpen) return
+      
+      try {
+        setLoadingClients(true)
+        const result = await apiClient.getClients({ limit: 100 })
+        if (result.success) {
+          setClients(result.data.clients || [])
+        }
+      } catch (error) {
+        console.error('Error loading clients:', error)
+        toast.error('Failed to load clients')
+      } finally {
+        setLoadingClients(false)
+      }
+    }
+    
+    loadClients()
+  }, [isOpen])
 
   // Initialize form data when lead changes
   useEffect(() => {
@@ -55,6 +83,17 @@ const ProjectConversionModal = ({ isOpen, onClose, lead, onProjectCreated }) => 
       if (lead.industry?.trim()) noteLines.push(`Industry: ${lead.industry.trim()}`)
       if (lead.source?.trim()) noteLines.push(`Source: ${lead.source.trim()}`)
 
+      // Try to find matching client by email or name
+      let matchingClientId = ''
+      if (clients.length > 0 && lead.email) {
+        const matchingClient = clients.find(client => 
+          client.email?.toLowerCase() === lead.email.toLowerCase()
+        )
+        if (matchingClient) {
+          matchingClientId = matchingClient._id
+        }
+      }
+
       setFormData({
         name: projectName,
         description: description,
@@ -65,12 +104,17 @@ const ProjectConversionModal = ({ isOpen, onClose, lead, onProjectCreated }) => 
           lead.budget.currency : 'USD',
         startDate: lead.timeline?.startDate || '',
         endDate: lead.timeline?.endDate || '',
+        clientId: matchingClientId,
         clientName: clientName,
         tags: Array.isArray(lead.tags) ? lead.tags : [],
-        notes: noteLines.join('\n')
+        notes: noteLines.join('\n'),
+        // Carry over requirements from lead
+        requirements: {
+          scope: lead.requirements?.scope || ''
+        }
       })
     }
-  }, [lead, isOpen])
+  }, [lead, isOpen, clients])
 
   const generateUniqueProjectName = () => {
     const timestamp = new Date().toISOString().slice(0, 16).replace('T', ' ')
@@ -86,10 +130,21 @@ const ProjectConversionModal = ({ isOpen, onClose, lead, onProjectCreated }) => 
   }
 
   const handleInputChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }))
+    if (field.includes('.')) {
+      const [parent, child] = field.split('.')
+      setFormData(prev => ({
+        ...prev,
+        [parent]: {
+          ...prev[parent],
+          [child]: value
+        }
+      }))
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [field]: value
+      }))
+    }
 
     // Reset name availability when name changes
     if (field === 'name') {
@@ -109,8 +164,14 @@ const ProjectConversionModal = ({ isOpen, onClose, lead, onProjectCreated }) => 
         return
       }
 
-      if (!formData.clientName?.trim()) {
-        toast.error('Client name is required')
+      if (!formData.clientId && !formData.clientName?.trim()) {
+        toast.error('Please select a client or provide a client name')
+        return
+      }
+
+      // Validate required requirements field
+      if (!formData.requirements?.scope?.trim()) {
+        toast.error('Project requirements are required')
         return
       }
 
@@ -121,15 +182,23 @@ const ProjectConversionModal = ({ isOpen, onClose, lead, onProjectCreated }) => 
         projectName = `${formData.name.trim()} (${timestamp})`
       }
 
-      // Prepare project data with lead information for client creation
+      // Prepare project data
       const projectData = {
         name: projectName,
         description: formData.description?.trim(),
         status: formData.status,
         priority: formData.priority,
         currency: formData.currency,
-        // Send lead data to create/find client automatically
-        leadData: {
+        tags: formData.tags || []
+      }
+
+      // Add client information
+      if (formData.clientId) {
+        // Use existing client
+        projectData.clientId = formData.clientId
+      } else {
+        // Create new client from lead data
+        projectData.leadData = {
           firstName: lead.firstName || lead.name?.split(' ')[0] || 'Unknown',
           lastName: lead.lastName || lead.name?.split(' ').slice(1).join(' ') || '',
           email: lead.email,
@@ -137,8 +206,7 @@ const ProjectConversionModal = ({ isOpen, onClose, lead, onProjectCreated }) => 
           company: lead.company || '',
           source: lead.source || 'Lead Conversion',
           name: lead.name
-        },
-        tags: formData.tags || []
+        }
       }
 
       // Add optional fields only if they have valid values
@@ -170,6 +238,13 @@ const ProjectConversionModal = ({ isOpen, onClose, lead, onProjectCreated }) => 
 
       if (formData.notes?.trim()) {
         projectData.notes = formData.notes.trim()
+      }
+
+      // Add requirements if any exist
+      if (formData.requirements?.scope?.trim()) {
+        projectData.requirements = {
+          scope: formData.requirements.scope.trim()
+        }
       }
 
       console.log('🚀 Creating project with data:', JSON.stringify(projectData, null, 2))
@@ -316,15 +391,54 @@ const ProjectConversionModal = ({ isOpen, onClose, lead, onProjectCreated }) => 
 
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Client Name *
+                    Client *
                   </label>
-                  <input
-                    type="text"
-                    value={formData.clientName}
-                    onChange={(e) => handleInputChange('clientName', e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Enter client name"
-                  />
+                  {loadingClients ? (
+                    <div className="flex items-center justify-center py-3 bg-slate-800 border border-slate-600 rounded-xl">
+                      <div className="w-4 h-4 border-2 border-slate-400 border-t-white rounded-full animate-spin mr-2"></div>
+                      <span className="text-slate-400 text-sm">Loading clients...</span>
+                    </div>
+                  ) : (
+                    <select
+                      value={formData.clientId}
+                      onChange={(e) => {
+                        handleInputChange('clientId', e.target.value)
+                        // Update client name for fallback
+                        const selectedClient = clients.find(c => c._id === e.target.value)
+                        if (selectedClient) {
+                          handleInputChange('clientName', `${selectedClient.firstName} ${selectedClient.lastName}`)
+                        } else {
+                          handleInputChange('clientName', '')
+                        }
+                      }}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="" className="bg-slate-800">Select a client or create new</option>
+                      {clients.map((client) => (
+                        <option key={client._id} value={client._id} className="bg-slate-800">
+                          {client.firstName} {client.lastName}
+                          {client.company && ` (${client.company})`}
+                          {client.email && ` - ${client.email}`}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  
+                  {/* Fallback text input when no client is selected */}
+                  {!formData.clientId && (
+                    <div className="mt-2">
+                      <input
+                        type="text"
+                        value={formData.clientName}
+                        onChange={(e) => handleInputChange('clientName', e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Or enter new client name"
+                      />
+                      <p className="text-xs text-slate-400 mt-1">
+                        A new client will be created with this name and lead information
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -470,6 +584,39 @@ const ProjectConversionModal = ({ isOpen, onClose, lead, onProjectCreated }) => 
                 />
               </div>
             </div>
+
+            {/* Project Requirements */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium text-white flex items-center">
+                <Tag className="w-5 h-5 mr-2" />
+                Project Requirements
+                <span className="ml-2 text-xs text-slate-400 font-normal">
+                  {lead?.requirements?.scope ? '(from lead details)' : '(required for project)'}
+                </span>
+              </h3>
+              
+              {!lead?.requirements?.scope && (
+                <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
+                  <p className="text-sm text-yellow-400">
+                    <strong>⚠️ Note:</strong> This lead doesn't have detailed requirements. Please add comprehensive project requirements below to ensure successful project planning.
+                  </p>
+                </div>
+              )}
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Requirements *
+                </label>
+                <textarea
+                  value={formData.requirements.scope}
+                  onChange={(e) => handleInputChange('requirements.scope', e.target.value)}
+                  rows={5}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Describe your project requirements including scope, deliverables, technical needs, business goals, timeline expectations, and any other important details..."
+                  required
+                />
+              </div>
+            </div>
           </div>
 
           {/* Helper Text */}
@@ -490,7 +637,7 @@ const ProjectConversionModal = ({ isOpen, onClose, lead, onProjectCreated }) => 
             </button>
             <motion.button
               onClick={handleSubmit}
-              disabled={loading || !formData.name?.trim() || !formData.clientName?.trim() || !nameAvailable}
+              disabled={loading || !formData.name?.trim() || (!formData.clientId && !formData.clientName?.trim()) || !nameAvailable || !formData.requirements?.scope?.trim()}
               whileHover={{ scale: loading ? 1 : 1.02 }}
               whileTap={{ scale: loading ? 1 : 0.98 }}
               className="flex items-center space-x-2 px-6 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"

@@ -150,11 +150,25 @@ router.post('/', authenticate, async (req, res) => {
     const { clientId, ...quoteData } = req.body;
 
     // Validate client exists and belongs to user
-    const client = await Client.findOne({
-      _id: clientId,
-      createdBy: req.user.id,
-      isActive: true
-    });
+    let client = null;
+    
+    if (clientId) {
+      // Try to find by ID first
+      client = await Client.findOne({
+        _id: clientId,
+        createdBy: req.user.id,
+        isActive: true
+      });
+    }
+    
+    // If no client found by ID, try to find by email
+    if (!client && quoteData.clientEmail) {
+      client = await Client.findOne({
+        email: quoteData.clientEmail,
+        createdBy: req.user.id,
+        isActive: true
+      });
+    }
 
     if (!client) {
       return res.status(404).json({
@@ -163,12 +177,29 @@ router.post('/', authenticate, async (req, res) => {
       });
     }
 
+    // Validate project exists and belongs to user and client
+    if (quoteData.projectId) {
+      const Project = (await import('../models/Project.js')).default;
+      const project = await Project.findOne({
+        _id: quoteData.projectId,
+        createdBy: req.user.id,
+        clientId: client._id
+      });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message: 'Project not found or does not belong to the selected client'
+        });
+      }
+    }
+
     // Create quote with client information
     const quote = new Quote({
       ...quoteData,
       clientId: client._id,
-      clientName: `${client.firstName} ${client.lastName}`,
-      clientEmail: client.email,
+      clientName: quoteData.clientName || `${client.firstName || ''} ${client.lastName || ''}`.trim() || client.company || 'Unknown Client',
+      clientEmail: quoteData.clientEmail || client.email,
       clientAddress: client.address,
       createdBy: req.user.id
     });
@@ -185,6 +216,19 @@ router.post('/', authenticate, async (req, res) => {
     });
   } catch (error) {
     logger.error('Error creating quote:', error);
+    logger.error('Quote data that failed:', JSON.stringify(req.body, null, 2));
+    
+    // Check if it's a validation error
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: validationErrors,
+        error: error.message
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Failed to create quote',
@@ -299,14 +343,89 @@ router.post('/:id/send', authenticate, async (req, res) => {
     
     await quote.markAsSent(emailRecipients);
 
-    // TODO: Send email notification
-    // await emailService.sendQuote(quote, emailRecipients);
+    // Send email using email service
+    try {
+      const emailService = (await import('../utils/emailService.js')).default;
+      const pdfService = (await import('../services/pdfService.js')).default;
+      
+      // Generate PDF attachment
+      const pdfBuffer = await pdfService.generateQuotePDF(quote);
+      
+      const emailOptions = {
+        to: emailRecipients.join(', '),
+        subject: req.body.subject || `Quote ${quote.quoteNumber} from ${process.env.APP_NAME || 'Your Company'}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333;">Quote ${quote.quoteNumber}</h2>
+            
+            <p>Dear ${quote.clientName || 'Valued Client'},</p>
+            
+            <p>${req.body.message || `Please find attached quote ${quote.quoteNumber} for your requested services.`}</p>
+            
+            <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #333;">Quote Details:</h3>
+              <ul style="list-style: none; padding: 0;">
+                <li><strong>Quote Number:</strong> ${quote.quoteNumber}</li>
+                <li><strong>Total Amount:</strong> $${quote.total?.toLocaleString() || '0'}</li>
+                <li><strong>Valid Until:</strong> ${quote.validUntil ? new Date(quote.validUntil).toLocaleDateString() : 'Please contact us for validity'}</li>
+                <li><strong>Status:</strong> ${quote.status}</li>
+              </ul>
+            </div>
+            
+            <p>This quote includes all the services and features we discussed. Please review the details and let us know if you have any questions or would like to proceed.</p>
+            
+            <p>We're excited about the opportunity to work with you!</p>
+            
+            <p>Best regards,<br>
+            ${process.env.APP_NAME || 'Your Company'}</p>
+          </div>
+        `,
+        text: `
+Quote ${quote.quoteNumber}
 
-    res.json({
-      success: true,
-      data: quote,
-      message: 'Quote sent successfully'
-    });
+Dear ${quote.clientName || 'Valued Client'},
+
+${req.body.message || `Please find quote ${quote.quoteNumber} for your requested services.`}
+
+Quote Details:
+- Quote Number: ${quote.quoteNumber}
+- Total Amount: $${quote.total?.toLocaleString() || '0'}
+- Valid Until: ${quote.validUntil ? new Date(quote.validUntil).toLocaleDateString() : 'Please contact us for validity'}
+
+This quote includes all the services and features we discussed. Please review the details and let us know if you have any questions or would like to proceed.
+
+We're excited about the opportunity to work with you!
+
+Best regards,
+${process.env.APP_NAME || 'Your Company'}
+        `,
+        attachments: [
+          {
+            filename: `Quote-${quote.quoteNumber}.pdf`,
+            content: pdfBuffer,
+            contentType: 'application/pdf'
+          }
+        ]
+      };
+
+      const emailResult = await emailService.sendEmail(emailOptions);
+      
+      res.json({
+        success: true,
+        data: quote,
+        message: 'Quote sent successfully',
+        emailResult: emailResult
+      });
+    } catch (emailError) {
+      console.error('Email sending error:', emailError);
+      // Still return success since the quote status was updated
+      res.json({
+        success: true,
+        data: quote,
+        message: 'Quote status updated but email sending failed',
+        emailError: emailError.message
+      });
+    }
   } catch (error) {
     logger.error('Error sending quote:', error);
     res.status(500).json({
@@ -491,6 +610,52 @@ router.post('/:id/duplicate', authenticate, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to duplicate quote',
+      error: error.message
+    });
+  }
+});
+
+// Download quote as PDF
+router.get('/:id/download', authenticate, async (req, res) => {
+  try {
+    const quote = await Quote.findOne({
+      _id: req.params.id,
+      createdBy: req.user.id,
+      isActive: true
+    });
+
+    if (!quote) {
+      return res.status(404).json({
+        success: false,
+        message: 'Quote not found'
+      });
+    }
+
+    // Generate PDF using PDF service
+    try {
+      const pdfService = (await import('../services/pdfService.js')).default;
+      const pdfBuffer = await pdfService.generateQuotePDF(quote);
+
+      // Set response headers for PDF download
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="Quote-${quote.quoteNumber}.pdf"`);
+      res.setHeader('Content-Length', pdfBuffer.length);
+
+      // Send the PDF buffer
+      res.send(pdfBuffer);
+    } catch (pdfError) {
+      console.error('Quote PDF generation error:', pdfError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to generate PDF',
+        error: pdfError.message
+      });
+    }
+  } catch (error) {
+    logger.error('Error downloading quote:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to download quote',
       error: error.message
     });
   }

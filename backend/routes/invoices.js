@@ -335,17 +335,95 @@ router.post('/:id/send', authenticate, [
   // Mark invoice as sent
   await invoice.markAsSent(recipients);
 
-  // TODO: Implement actual email sending functionality
-  // This would integrate with your email service (Nodemailer, SendGrid, etc.)
-  
-  res.json({
-    success: true,
-    message: 'Invoice sent successfully',
-    data: {
-      invoice,
-      sentTo: recipients
-    }
-  });
+  // Send email using email service
+  try {
+    const emailService = (await import('../utils/emailService.js')).default;
+    const pdfService = (await import('../services/pdfService.js')).default;
+    
+    // Generate PDF attachment
+    const pdfBuffer = await pdfService.generateInvoicePDF(invoice);
+    
+    const emailOptions = {
+      to: recipients.join(', '),
+      subject: req.body.subject || `Invoice ${invoice.invoiceNumber} from ${process.env.APP_NAME || 'Your Company'}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333;">Invoice ${invoice.invoiceNumber}</h2>
+          
+          <p>Dear ${invoice.clientName || 'Valued Client'},</p>
+          
+          <p>${req.body.message || `Please find attached invoice ${invoice.invoiceNumber} for your recent services.`}</p>
+          
+          <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #333;">Invoice Details:</h3>
+            <ul style="list-style: none; padding: 0;">
+              <li><strong>Invoice Number:</strong> ${invoice.invoiceNumber}</li>
+              <li><strong>Amount:</strong> $${invoice.total?.toLocaleString() || '0'}</li>
+              <li><strong>Due Date:</strong> ${invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : 'Upon receipt'}</li>
+              <li><strong>Status:</strong> ${invoice.status}</li>
+            </ul>
+          </div>
+          
+          <p>Please don't hesitate to contact us if you have any questions about this invoice.</p>
+          
+          <p>Thank you for your business!</p>
+          
+          <p>Best regards,<br>
+          ${process.env.APP_NAME || 'Your Company'}</p>
+        </div>
+      `,
+      text: `
+Invoice ${invoice.invoiceNumber}
+
+Dear ${invoice.clientName || 'Valued Client'},
+
+${req.body.message || `Please find invoice ${invoice.invoiceNumber} for your recent services.`}
+
+Invoice Details:
+- Invoice Number: ${invoice.invoiceNumber}
+- Amount: $${invoice.total?.toLocaleString() || '0'}
+- Due Date: ${invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : 'Upon receipt'}
+
+Please don't hesitate to contact us if you have any questions about this invoice.
+
+Thank you for your business!
+
+Best regards,
+${process.env.APP_NAME || 'Your Company'}
+      `,
+      attachments: [
+        {
+          filename: `Invoice-${invoice.invoiceNumber}.pdf`,
+          content: pdfBuffer,
+          contentType: 'application/pdf'
+        }
+      ]
+    };
+
+    const emailResult = await emailService.sendEmail(emailOptions);
+    
+    res.json({
+      success: true,
+      message: 'Invoice sent successfully',
+      data: {
+        invoice,
+        sentTo: recipients,
+        emailResult: emailResult
+      }
+    });
+  } catch (emailError) {
+    console.error('Email sending error:', emailError);
+    // Still return success since the invoice status was updated
+    res.json({
+      success: true,
+      message: 'Invoice status updated but email sending failed',
+      data: {
+        invoice,
+        sentTo: recipients,
+        emailError: emailError.message
+      }
+    });
+  }
 }));
 
 // Download invoice as PDF
@@ -363,18 +441,22 @@ router.get('/:id/download', authenticate, catchAsync(async (req, res) => {
   // Increment download count
   await invoice.incrementDownloadCount();
 
-  // TODO: Implement PDF generation
-  // This would use a library like Puppeteer, PDFKit, or similar
-  // For now, return a simple response
-  
-  res.json({
-    success: true,
-    message: 'PDF generation not implemented yet',
-    data: {
-      downloadUrl: `/invoices/${invoice._id}/pdf`,
-      invoice
-    }
-  });
+  // Generate PDF using PDF service
+  try {
+    const pdfService = (await import('../services/pdfService.js')).default;
+    const pdfBuffer = await pdfService.generateInvoicePDF(invoice);
+
+    // Set response headers for PDF download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Invoice-${invoice.invoiceNumber}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+
+    // Send the PDF buffer
+    res.send(pdfBuffer);
+  } catch (pdfError) {
+    console.error('PDF generation error:', pdfError);
+    throw new AppError('Failed to generate PDF', 500);
+  }
 }));
 
 // Mark invoice as viewed (for tracking)

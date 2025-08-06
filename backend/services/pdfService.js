@@ -624,6 +624,278 @@ class PDFService {
       }
     }
   }
+
+  // Generate Invoice PDF
+  async generateInvoicePDF(invoice) {
+    return new Promise((resolve, reject) => {
+      try {
+        const doc = new PDFDocument({
+          size: 'A4',
+          margins: this.margins
+        });
+
+        const chunks = [];
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => {
+          const pdfBuffer = Buffer.concat(chunks);
+          resolve(pdfBuffer);
+        });
+        doc.on('error', reject);
+
+        // Header
+        doc.fontSize(24)
+           .fillColor(this.colors.primary)
+           .text('INVOICE', this.margins.left, this.margins.top);
+
+        doc.fontSize(14)
+           .fillColor(this.colors.text)
+           .text(`Invoice #${invoice.invoiceNumber}`, this.margins.left, this.margins.top + 40);
+
+        // Invoice details
+        let yPosition = this.margins.top + 80;
+        
+        doc.fontSize(12)
+           .text(`Date: ${new Date(invoice.createdAt).toLocaleDateString()}`, this.margins.left, yPosition)
+           .text(`Due Date: ${invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : 'Upon receipt'}`, this.margins.left, yPosition + 20)
+           .text(`Status: ${invoice.status.toUpperCase()}`, this.margins.left, yPosition + 40);
+
+        // Bill To
+        yPosition += 80;
+        doc.fontSize(14)
+           .fillColor(this.colors.primary)
+           .text('Bill To:', this.margins.left, yPosition);
+
+        doc.fontSize(12)
+           .fillColor(this.colors.text)
+           .text(invoice.clientName || 'Client', this.margins.left, yPosition + 25);
+
+        if (invoice.clientEmail) {
+          doc.text(invoice.clientEmail, this.margins.left, yPosition + 45);
+        }
+
+        // Items table
+        yPosition += 100;
+        doc.fontSize(12)
+           .fillColor(this.colors.primary)
+           .text('Description', this.margins.left, yPosition)
+           .text('Qty', this.margins.left + 300, yPosition)
+           .text('Rate', this.margins.left + 350, yPosition)
+           .text('Amount', this.margins.left + 420, yPosition);
+
+        // Draw line under headers
+        yPosition += 20;
+        doc.moveTo(this.margins.left, yPosition)
+           .lineTo(this.margins.left + this.contentWidth, yPosition)
+           .strokeColor(this.colors.border)
+           .stroke();
+
+        // Items
+        yPosition += 10;
+        if (invoice.items && invoice.items.length > 0) {
+          invoice.items.forEach(item => {
+            yPosition += 20;
+            doc.fontSize(10)
+               .fillColor(this.colors.text)
+               .text(item.description || '', this.margins.left, yPosition, { width: 280 })
+               .text(item.quantity?.toString() || '1', this.margins.left + 300, yPosition)
+               .text(`$${(item.rate || 0).toFixed(2)}`, this.margins.left + 350, yPosition)
+               .text(`$${(item.amount || 0).toFixed(2)}`, this.margins.left + 420, yPosition);
+          });
+        }
+
+        // Totals
+        yPosition += 60;
+        const totalsX = this.margins.left + 350;
+        
+        doc.fontSize(12)
+           .fillColor(this.colors.text)
+           .text('Subtotal:', totalsX, yPosition)
+           .text(`$${(invoice.subtotal || 0).toFixed(2)}`, totalsX + 70, yPosition);
+
+        if (invoice.tax > 0) {
+          yPosition += 20;
+          doc.text(`Tax (${invoice.tax}%):`, totalsX, yPosition)
+             .text(`$${(invoice.taxAmount || 0).toFixed(2)}`, totalsX + 70, yPosition);
+        }
+
+        if (invoice.discount > 0) {
+          yPosition += 20;
+          doc.text(`Discount (${invoice.discount}%):`, totalsX, yPosition)
+             .text(`-$${(invoice.discountAmount || 0).toFixed(2)}`, totalsX + 70, yPosition);
+        }
+
+        yPosition += 30;
+        doc.fontSize(14)
+           .fillColor(this.colors.primary)
+           .text('Total:', totalsX, yPosition)
+           .text(`$${(invoice.total || 0).toFixed(2)}`, totalsX + 70, yPosition);
+
+        // Notes
+        if (invoice.notes) {
+          yPosition += 60;
+          doc.fontSize(12)
+             .fillColor(this.colors.primary)
+             .text('Notes:', this.margins.left, yPosition);
+          
+          doc.fontSize(10)
+             .fillColor(this.colors.text)
+             .text(invoice.notes, this.margins.left, yPosition + 20, { width: this.contentWidth });
+        }
+
+        doc.end();
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  // Generate Quote PDF
+  async generateQuotePDF(quote) {
+    return new Promise((resolve, reject) => {
+      try {
+        const doc = new PDFDocument({
+          size: 'A4',
+          margins: this.margins
+        });
+
+        const chunks = [];
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => {
+          const pdfBuffer = Buffer.concat(chunks);
+          resolve(pdfBuffer);
+        });
+        doc.on('error', reject);
+
+        // Header
+        doc.fontSize(24)
+           .fillColor(this.colors.primary)
+           .text('QUOTE', this.margins.left, this.margins.top);
+
+        doc.fontSize(14)
+           .fillColor(this.colors.text)
+           .text(`Quote #${quote.quoteNumber}`, this.margins.left, this.margins.top + 40);
+
+        // Quote details
+        let yPosition = this.margins.top + 80;
+        
+        doc.fontSize(12)
+           .text(`Date: ${new Date(quote.createdAt).toLocaleDateString()}`, this.margins.left, yPosition)
+           .text(`Valid Until: ${quote.validUntil ? new Date(quote.validUntil).toLocaleDateString() : 'Please contact us'}`, this.margins.left, yPosition + 20)
+           .text(`Status: ${quote.status.toUpperCase()}`, this.margins.left, yPosition + 40);
+
+        // Quote To
+        yPosition += 80;
+        doc.fontSize(14)
+           .fillColor(this.colors.primary)
+           .text('Quote For:', this.margins.left, yPosition);
+
+        doc.fontSize(12)
+           .fillColor(this.colors.text)
+           .text(quote.clientName || 'Client', this.margins.left, yPosition + 25);
+
+        if (quote.clientEmail) {
+          doc.text(quote.clientEmail, this.margins.left, yPosition + 45);
+        }
+
+        // Quote title and description
+        if (quote.title) {
+          yPosition += 80;
+          doc.fontSize(16)
+             .fillColor(this.colors.primary)
+             .text(quote.title, this.margins.left, yPosition);
+        }
+
+        if (quote.description) {
+          yPosition += 30;
+          doc.fontSize(11)
+             .fillColor(this.colors.text)
+             .text(quote.description, this.margins.left, yPosition, { width: this.contentWidth });
+          yPosition += 40;
+        }
+
+        // Items table
+        yPosition += 20;
+        doc.fontSize(12)
+           .fillColor(this.colors.primary)
+           .text('Description', this.margins.left, yPosition)
+           .text('Qty', this.margins.left + 300, yPosition)
+           .text('Rate', this.margins.left + 350, yPosition)
+           .text('Amount', this.margins.left + 420, yPosition);
+
+        // Draw line under headers
+        yPosition += 20;
+        doc.moveTo(this.margins.left, yPosition)
+           .lineTo(this.margins.left + this.contentWidth, yPosition)
+           .strokeColor(this.colors.border)
+           .stroke();
+
+        // Items
+        yPosition += 10;
+        if (quote.items && quote.items.length > 0) {
+          quote.items.forEach(item => {
+            yPosition += 20;
+            doc.fontSize(10)
+               .fillColor(this.colors.text)
+               .text(item.description || '', this.margins.left, yPosition, { width: 280 })
+               .text(item.quantity?.toString() || '1', this.margins.left + 300, yPosition)
+               .text(`$${(item.rate || 0).toFixed(2)}`, this.margins.left + 350, yPosition)
+               .text(`$${(item.amount || 0).toFixed(2)}`, this.margins.left + 420, yPosition);
+          });
+        }
+
+        // Totals
+        yPosition += 60;
+        const totalsX = this.margins.left + 350;
+        
+        doc.fontSize(12)
+           .fillColor(this.colors.text)
+           .text('Subtotal:', totalsX, yPosition)
+           .text(`$${(quote.subtotal || 0).toFixed(2)}`, totalsX + 70, yPosition);
+
+        if (quote.tax > 0) {
+          yPosition += 20;
+          doc.text(`Tax (${quote.tax}%):`, totalsX, yPosition)
+             .text(`$${(quote.taxAmount || 0).toFixed(2)}`, totalsX + 70, yPosition);
+        }
+
+        yPosition += 30;
+        doc.fontSize(14)
+           .fillColor(this.colors.primary)
+           .text('Total:', totalsX, yPosition)
+           .text(`$${(quote.total || 0).toFixed(2)}`, totalsX + 70, yPosition);
+
+        // Terms and Notes
+        if (quote.terms || quote.notes) {
+          yPosition += 60;
+          
+          if (quote.terms) {
+            doc.fontSize(12)
+               .fillColor(this.colors.primary)
+               .text('Terms & Conditions:', this.margins.left, yPosition);
+            
+            doc.fontSize(10)
+               .fillColor(this.colors.text)
+               .text(quote.terms, this.margins.left, yPosition + 20, { width: this.contentWidth });
+            yPosition += 60;
+          }
+
+          if (quote.notes) {
+            doc.fontSize(12)
+               .fillColor(this.colors.primary)
+               .text('Notes:', this.margins.left, yPosition);
+            
+            doc.fontSize(10)
+               .fillColor(this.colors.text)
+               .text(quote.notes, this.margins.left, yPosition + 20, { width: this.contentWidth });
+          }
+        }
+
+        doc.end();
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
 }
 
 export default new PDFService(); 

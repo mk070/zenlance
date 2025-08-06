@@ -66,6 +66,11 @@ class EmailService {
       text: options.text
     };
 
+    // Add attachments if provided
+    if (options.attachments && options.attachments.length > 0) {
+      emailOptions.attachments = options.attachments;
+    }
+
     try {
       const info = await this.transporter.sendMail(emailOptions);
       

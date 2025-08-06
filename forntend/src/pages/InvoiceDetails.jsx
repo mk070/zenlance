@@ -161,13 +161,40 @@ const InvoiceDetails = () => {
   }
 
   const handleSendInvoice = async () => {
+    if (!invoice.clientEmail) {
+      toast.error('Client email is required to send invoice')
+      return
+    }
+
+    if (!window.confirm(`Send invoice to ${invoice.clientEmail}?`)) {
+      return
+    }
+
     try {
       setSaving(true)
-      const result = await apiClient.sendInvoice(id)
+      const result = await apiClient.sendInvoice(id, {
+        to: invoice.clientEmail,
+        subject: `Invoice ${invoice.invoiceNumber} from ${invoice.companyName || 'Your Company'}`,
+        message: `Dear ${invoice.clientName || 'Valued Client'},
+
+Please find attached invoice ${invoice.invoiceNumber} for your recent services.
+
+Invoice Details:
+- Invoice Number: ${invoice.invoiceNumber}
+- Amount: $${invoice.total?.toLocaleString() || '0'}
+- Due Date: ${invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : 'Upon receipt'}
+
+Please don't hesitate to contact us if you have any questions about this invoice.
+
+Thank you for your business!
+
+Best regards,
+${invoice.companyName || 'Your Company'}`
+      })
       
       if (result.success) {
         setInvoice(prev => ({ ...prev, status: 'sent', sentDate: new Date() }))
-        toast.success('Invoice sent successfully!')
+        toast.success(`Invoice sent successfully to ${invoice.clientEmail}!`)
       } else {
         toast.error(result.error || 'Failed to send invoice')
       }
@@ -181,15 +208,17 @@ const InvoiceDetails = () => {
 
   const handleDownloadInvoice = async () => {
     try {
-      const result = await apiClient.downloadInvoice(id)
-      // Handle blob download
-      const url = window.URL.createObjectURL(new Blob([result]))
+      const response = await apiClient.downloadInvoice(id)
+      // The response is the raw response object, get the blob
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
       link.setAttribute('download', `Invoice-${invoice.invoiceNumber}.pdf`)
       document.body.appendChild(link)
       link.click()
       link.remove()
+      window.URL.revokeObjectURL(url)
       toast.success('Invoice downloaded successfully!')
     } catch (error) {
       console.error('Error downloading invoice:', error)

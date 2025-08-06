@@ -21,7 +21,8 @@ import {
   FileText,
   Wand2,
   Eye,
-  Download
+  Download,
+  CheckCircle
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import apiClient from '../lib/api-client'
@@ -34,7 +35,7 @@ const Leads = () => {
   const [loading, setLoading] = useState(true)
   const [initialLoading, setInitialLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('active') // Default to active leads, hiding accepted ones
   const [priorityFilter, setPriorityFilter] = useState('all')
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -44,6 +45,7 @@ const Leads = () => {
   const [showProposalModal, setShowProposalModal] = useState(false)
   const [selectedLead, setSelectedLead] = useState(null)
   const [proposals, setProposals] = useState({})
+  const [showLeadSelector, setShowLeadSelector] = useState(false)
 
   // Pagination state
   const [pagination, setPagination] = useState({
@@ -67,17 +69,10 @@ const Leads = () => {
     status: 'New',
     priority: 'Medium',
     projectType: '',
-    budget: {
-      min: '',
-      max: '',
-      currency: 'USD'
+    // Enhanced requirements section
+    requirements: {
+      scope: ''
     },
-    timeline: {
-      startDate: '',
-      endDate: '',
-      urgency: 'Flexible'
-    },
-    description: '',
     tags: []
   })
 
@@ -88,10 +83,21 @@ const Leads = () => {
         page,
         limit: 20,
         search,
-        ...(status && status !== 'all' && { status }),
         ...(priority && priority !== 'all' && { priority }),
         sortBy: 'createdAt',
         sortOrder: 'desc'
+      }
+
+      // Handle status filtering
+      if (status === 'active') {
+        // Show all leads except Won/Accepted ones
+        params.excludeStatus = 'Won'
+      } else if (status === 'history') {
+        // Show only Won/Accepted leads
+        params.status = 'Won'
+      } else if (status && status !== 'all') {
+        // Show specific status
+        params.status = status
       }
 
       const result = await apiClient.getLeads(params)
@@ -134,21 +140,33 @@ const Leads = () => {
     }
   }
 
-  // Handle proposal generation
+  // Handle proposal generation - works exactly like LeadDetails
   const handleGenerateProposal = (lead) => {
+    if (!lead) return;
+    
     setSelectedLead(lead)
-    setShowProposalModal(true)
+    // Show the modal instead of directly generating
+    setShowProposalModal(true);
   }
 
-  // Handle proposal generation completion
-  const handleProposalGenerated = (proposal) => {
+  // Handle proposal generation completion - works exactly like LeadDetails
+  const handleProposalGenerated = async (proposal) => {
+    // Add the new proposal to the list
     setProposals(prev => ({
       ...prev,
-      [proposal.leadId]: [...(prev[proposal.leadId] || []), proposal]
+      [proposal.leadId]: [proposal, ...(prev[proposal.leadId] || [])]
     }))
+    
+    // Close the modal
+    setShowProposalModal(false)
+    
+    // Reload proposals for this specific lead to ensure we have the latest data
+    if (proposal.leadId) {
+      await loadProposals(proposal.leadId)
+    }
   }
 
-  // Handle proposal modal close
+  // Handle proposal modal close - works exactly like LeadDetails
   const handleProposalModalClose = () => {
     setShowProposalModal(false)
     setSelectedLead(null)
@@ -238,31 +256,19 @@ const Leads = () => {
       if (formData.jobTitle?.trim()) leadData.jobTitle = formData.jobTitle.trim()
       if (formData.industry?.trim()) leadData.industry = formData.industry.trim()
       if (formData.projectType?.trim()) leadData.projectType = formData.projectType.trim()
-      if (formData.description?.trim()) leadData.description = formData.description.trim()
 
-      // Add budget if min or max has values
-      if (formData.budget.min || formData.budget.max || formData.budget.currency !== 'USD') {
-        leadData.budget = {}
-        if (formData.budget.min) leadData.budget.min = parseFloat(formData.budget.min)
-        if (formData.budget.max) leadData.budget.max = parseFloat(formData.budget.max) 
-        if (formData.budget.currency && formData.budget.currency !== 'USD') {
-          leadData.budget.currency = formData.budget.currency
-        }
-      }
 
-      // Add timeline if any fields have values
-      if (formData.timeline.startDate || formData.timeline.endDate || formData.timeline.urgency !== 'Flexible') {
-        leadData.timeline = {}
-        if (formData.timeline.startDate) leadData.timeline.startDate = formData.timeline.startDate
-        if (formData.timeline.endDate) leadData.timeline.endDate = formData.timeline.endDate
-        if (formData.timeline.urgency && formData.timeline.urgency !== 'Flexible') {
-          leadData.timeline.urgency = formData.timeline.urgency
-        }
-      }
 
       // Add tags if any exist
       if (formData.tags && formData.tags.length > 0) {
         leadData.tags = formData.tags.filter(tag => tag.trim()).map(tag => tag.trim())
+      }
+
+      // Add requirements if any content exists
+      if (formData.requirements?.scope?.trim()) {
+        leadData.requirements = {
+          scope: formData.requirements.scope.trim()
+        }
       }
 
       // Debug: Log the data being sent
@@ -286,17 +292,9 @@ const Leads = () => {
           status: 'New',
           priority: 'Medium',
           projectType: '',
-          budget: {
-            min: '',
-            max: '',
-            currency: 'USD'
+          requirements: {
+            scope: ''
           },
-          timeline: {
-            startDate: '',
-            endDate: '',
-            urgency: 'Flexible'
-          },
-          description: '',
           tags: []
         })
         loadLeads()
@@ -332,6 +330,20 @@ const Leads = () => {
   useEffect(() => {
     loadLeads()
   }, [])
+
+  // Close lead selector when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showLeadSelector && !event.target.closest('.relative')) {
+        setShowLeadSelector(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showLeadSelector])
 
   // Load proposals for all leads when leads change
   useEffect(() => {
@@ -426,6 +438,58 @@ const Leads = () => {
             <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
           
+          <div className="relative">
+            <button
+              onClick={() => {
+                if (leads.length > 0) {
+                  setShowLeadSelector(!showLeadSelector)
+                } else {
+                  toast.error('Please add a lead first before creating a proposal')
+                }
+              }}
+              className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-200 font-medium"
+            >
+              <FileText className="w-5 h-5" />
+              <span>Create Proposal</span>
+              {leads.length > 0 && <ChevronDown className="w-4 h-4" />}
+            </button>
+            
+            {showLeadSelector && (
+              <div className="absolute top-full left-0 mt-2 w-80 bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-xl z-50 max-h-64 overflow-y-auto">
+                <div className="p-3 border-b border-white/10">
+                  <p className="text-sm text-slate-300 font-medium">Select a lead for proposal</p>
+                </div>
+                <div className="py-2">
+                  {leads.map((lead) => (
+                                         <button
+                       key={lead._id}
+                       onClick={() => {
+                         setShowLeadSelector(false)
+                         handleGenerateProposal(lead)
+                       }}
+                       className="w-full px-4 py-3 text-left hover:bg-white/5 transition-colors flex items-center space-x-3"
+                     >
+                      <div className="w-8 h-8 bg-gradient-to-br from-cyan-400/20 to-blue-500/20 rounded-lg flex items-center justify-center border border-cyan-400/20">
+                        <span className="text-cyan-400 font-medium text-xs">
+                          {lead.firstName?.[0]}{lead.lastName?.[0]}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-medium truncate">
+                          {lead.firstName} {lead.lastName}
+                        </p>
+                        <p className="text-slate-400 text-sm truncate">{lead.company}</p>
+                      </div>
+                      <span className={`px-2 py-1 rounded text-xs ${getStatusColor(lead.status)}`}>
+                        {lead.status}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          
           <button
             onClick={() => setShowCreateForm(true)}
             className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl hover:from-cyan-600 hover:to-blue-700 transition-all duration-200 font-medium"
@@ -465,6 +529,8 @@ const Leads = () => {
                 onChange={(e) => handleStatusFilter(e.target.value)}
                 className="appearance-none bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl px-4 py-3 text-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all"
               >
+                <option value="active" className="bg-slate-800">Active Deals</option>
+                <option value="history" className="bg-slate-800">📋 Deal History</option>
                 <option value="all" className="bg-slate-800">All Status</option>
                 <option value="new" className="bg-slate-800">New</option>
                 <option value="contacted" className="bg-slate-800">Contacted</option>
@@ -511,11 +577,13 @@ const Leads = () => {
             <Users className="w-16 h-16 text-slate-400 mx-auto mb-4" />
             <h3 className="text-xl font-medium text-white mb-2">No leads found</h3>
             <p className="text-slate-400 mb-6">
-              {searchQuery || statusFilter !== 'all' || priorityFilter !== 'all'
-                ? 'Try adjusting your search or filters'
+              {searchQuery || statusFilter !== 'active' || priorityFilter !== 'all'
+                ? statusFilter === 'history' 
+                  ? 'No accepted deals found in history'
+                  : 'Try adjusting your search or filters'
                 : 'Start building your lead pipeline by adding your first lead'}
             </p>
-            {!searchQuery && statusFilter === 'all' && priorityFilter === 'all' && (
+            {!searchQuery && statusFilter === 'active' && priorityFilter === 'all' && (
               <button
                 onClick={() => setShowCreateForm(true)}
                 className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl hover:from-cyan-600 hover:to-blue-700 transition-all duration-200 font-medium"
@@ -548,7 +616,11 @@ const Leads = () => {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.5 + index * 0.1, duration: 0.5 }}
                   onClick={() => handleViewLead(lead)}
-                  className="px-6 py-4 hover:bg-white/5 transition-all duration-200 cursor-pointer group"
+                  className={`px-6 py-4 hover:bg-white/5 transition-all duration-200 cursor-pointer group ${
+                    lead.status === 'Won' && lead.dealAccepted 
+                      ? 'bg-green-500/5 border-l-4 border-green-500' 
+                      : ''
+                  }`}
                 >
                   <div className="grid grid-cols-12 gap-4 items-center">
                     {/* Lead Info */}
@@ -594,9 +666,23 @@ const Leads = () => {
 
                     {/* Status */}
                     <div className="col-span-1">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(lead.status)}`}>
-                        {lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}
-                      </span>
+                      <div className="flex flex-col items-center space-y-1">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(lead.status)}`}>
+                          {lead.status === 'Won' && lead.dealAccepted ? (
+                            <span className="flex items-center space-x-1">
+                              <CheckCircle className="w-3 h-3" />
+                              <span>Accepted</span>
+                            </span>
+                          ) : (
+                            lead.status.charAt(0).toUpperCase() + lead.status.slice(1)
+                          )}
+                        </span>
+                        {lead.acceptedDate && (
+                          <span className="text-xs text-green-400">
+                            {new Date(lead.acceptedDate).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Priority */}
@@ -810,8 +896,47 @@ const Leads = () => {
                       placeholder="CEO, CTO, etc."
                     />
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Industry</label>
+                    <input
+                      type="text"
+                      value={formData.industry}
+                      onChange={(e) => handleInputChange('industry', e.target.value)}
+                      className="w-full px-4 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all"
+                      placeholder="e.g. Technology, Healthcare, Finance"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Project Type</label>
+                    <input
+                      type="text"
+                      value={formData.projectType}
+                      onChange={(e) => handleInputChange('projectType', e.target.value)}
+                      className="w-full px-4 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all"
+                      placeholder="e.g. Website, Mobile App, Software"
+                    />
+                  </div>
                 </div>
               </div>
+
+              {/* Project Requirements (Optional) */}
+              <div>
+                <h4 className="text-lg font-medium text-white mb-2">Project Requirements</h4>
+                <p className="text-sm text-slate-400 mb-4">Describe your project requirements, scope, deliverables, and any technical or business needs</p>
+                
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Requirements</label>
+                  <textarea
+                    value={formData.requirements.scope}
+                    onChange={(e) => handleInputChange('requirements.scope', e.target.value)}
+                    className="w-full px-4 py-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all resize-none"
+                    placeholder="Describe your project requirements including scope, deliverables, technical needs, business goals, timeline expectations, and any other important details..."
+                    rows={5}
+                  />
+                </div>
+              </div>
+
+
 
               {/* Actions */}
               <div className="flex items-center justify-end space-x-4 pt-6 border-t border-white/10">

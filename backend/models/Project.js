@@ -103,6 +103,14 @@ const projectSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  
+  // Enhanced requirements structure (carried from leads)
+  requirements: {
+    scope: {
+      type: String,
+      trim: true
+    }
+  },
   status: {
     type: String,
     enum: ['draft', 'proposal', 'contracted', 'in_progress', 'on_hold', 'completed', 'cancelled'],
