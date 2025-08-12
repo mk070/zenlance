@@ -363,8 +363,8 @@ const LeadDetails = () => {
     try {
       setSendingProposal(proposal._id) // Set loading state for this specific proposal
       const result = await apiClient.sendProposal(proposal._id, {
-        subject: `Proposal from Zenlancer - ${proposal.title}`,
-        message: `Dear ${lead?.firstName},\n\nI'm pleased to share a comprehensive proposal for your project.\n\nPlease review the attached proposal and feel free to reach out with any questions.\n\nBest regards,\nZenlancer Team`
+        subject: `Proposal from freelancehubr - ${proposal.title}`,
+        message: `Dear ${lead?.firstName},\n\nI'm pleased to share a comprehensive proposal for your project.\n\nPlease review the attached proposal and feel free to reach out with any questions.\n\nBest regards,\nfreelancehubr Team`
       })
 
       if (result.success) {

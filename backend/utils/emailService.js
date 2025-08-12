@@ -295,7 +295,7 @@ class EmailService {
         </div>
 
         <div style="text-align: center; margin-top: 30px; color: #666; font-size: 14px;">
-          <p>This is an automated notification from ${process.env.APP_NAME || 'Zenlance'}.</p>
+          <p>This is an automated notification from ${process.env.APP_NAME || 'freelancehub'}.</p>
         </div>
       </body>
       </html>
@@ -343,7 +343,7 @@ class EmailService {
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
             <div style="background: linear-gradient(135deg, #0ea5e9 0%, #1e40af 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-              <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 300;">Zenlancer</h1>
+              <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 300;">freelancehubr</h1>
               <p style="color: #e0f2fe; margin: 10px 0 0 0; font-size: 14px;">Professional Freelance Services</p>
             </div>
             
@@ -361,7 +361,7 @@ class EmailService {
               
               <div style="border-top: 1px solid #e2e8f0; padding-top: 20px; margin-top: 30px;">
                 <p style="color: #64748b; font-size: 12px; margin: 0; text-align: center;">
-                  This proposal was generated using Zenlancer - Professional Freelance Management Platform
+                  This proposal was generated using freelancehubr - Professional Freelance Management Platform
                 </p>
               </div>
             </div>

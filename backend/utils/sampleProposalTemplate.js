@@ -1,7 +1,7 @@
 export const generateSampleProposal = (lead, userProfile, generationParams) => {
   const budgetAmount = lead.budget?.max || lead.budget?.min || 5000;
   const projectType = lead.projectType || 'Web Development';
-  const businessName = userProfile.businessName || 'Zenlancer';
+  const businessName = userProfile.businessName || 'freelancehubr';
   const clientName = `${lead.firstName} ${lead.lastName}`;
   const companyName = lead.company || `${lead.firstName}'s Company`;
 
