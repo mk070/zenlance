@@ -408,7 +408,7 @@ I look forward to the opportunity to work with you on this exciting project.
 
 Best regards,
 ${userProfile.firstName} ${userProfile.lastName}
-${userProfile.businessName || 'freelancehubr Professional Services'}`;
+${userProfile.businessName || 'freelancehub Professional Services'}`;
 
   // Send email with PDF attachment
   try {
