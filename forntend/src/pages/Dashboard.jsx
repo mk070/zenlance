@@ -80,6 +80,8 @@ const Dashboard = () => {
 
   const [recentProjects, setRecentProjects] = useState([])
   const [recentActivity, setRecentActivity] = useState([])
+  const [personalizedInsights, setPersonalizedInsights] = useState(null)
+  const [insightsLoading, setInsightsLoading] = useState(false)
   const [monthlyGoals, setMonthlyGoals] = useState([
     { goal: 'Revenue Target', current: '$0', target: '$5,000', progress: 0 },
     { goal: 'New Clients', current: '0', target: '5', progress: 0 },
@@ -381,6 +383,62 @@ const Dashboard = () => {
     }
   }
 
+  // Load personalized insights
+  const loadPersonalizedInsights = async () => {
+    if (!user) return
+    
+    try {
+      setInsightsLoading(true)
+      
+      const dashboardData = {
+        stats: stats.map(stat => ({
+          title: stat.title,
+          value: stat.value,
+          change: stat.change
+        })),
+        userProfile: userProfile ? {
+          businessName: userProfile.businessName,
+          industry: userProfile.industry,
+          businessType: userProfile.businessType,
+          primaryGoal: userProfile.primaryGoal
+        } : null
+      }
+      
+      const response = await apiClient.post('/social/generate-dashboard-insights', {
+        dashboardData
+      })
+      
+      if (response.data.success) {
+        setPersonalizedInsights(response.data.data)
+      }
+    } catch (error) {
+      console.warn('Failed to load personalized insights:', error)
+      // Set fallback insights
+      setPersonalizedInsights({
+        keyInsights: [
+          'Your business is showing positive growth trends.',
+          'Consider focusing on lead conversion optimization.',
+          'Regular client communication will strengthen relationships.'
+        ],
+        actionableRecommendations: [
+          {
+            title: 'Optimize workflows',
+            description: 'Review current processes for efficiency improvements',
+            impact: 'Increased productivity',
+            effort: 'medium'
+          }
+        ],
+        goalProgress: {
+          primaryGoal: 'general_growth',
+          progressAssessment: 'Making steady progress',
+          nextSteps: ['Focus on lead generation', 'Improve client retention']
+        }
+      })
+    } finally {
+      setInsightsLoading(false)
+    }
+  }
+
   useEffect(() => {
     console.log('📊 Dashboard useEffect triggered - loading dashboard data')
     
@@ -391,14 +449,15 @@ const Dashboard = () => {
       await Promise.all([
         loadDashboardStats(),
         loadRecentProjects(),
-        loadRecentActivity()
+        loadRecentActivity(),
+        loadPersonalizedInsights()
       ])
       
       setLoading(false)
     }
 
     loadDashboardData()
-  }, [])
+  }, [user, userProfile])
 
   console.log('✨ Dashboard about to render JSX')
 
@@ -706,6 +765,82 @@ const Dashboard = () => {
             )}
           </div>
         </div>
+
+        {/* Simple AI Insights for Freelancers */}
+        {personalizedInsights && (
+          <div className="col-span-full">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.8 }}
+              className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-gradient-to-r from-cyan-500/20 to-blue-500/20 rounded-xl">
+                    <Target className="w-6 h-6 text-cyan-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-light text-white">Quick Insights</h3>
+                    <p className="text-slate-400 text-sm">Simple advice for your freelance work</p>
+                  </div>
+                </div>
+                {insightsLoading && (
+                  <Loader className="w-5 h-5 text-cyan-400 animate-spin" />
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Current Focus */}
+                <div>
+                  <div className="space-y-4">
+                    {personalizedInsights.keyInsights?.map((insight, index) => (
+                      <div key={index} className="flex items-start space-x-3 p-4 bg-white/5 rounded-lg">
+                        <div className="p-1 bg-cyan-500/20 rounded-full flex-shrink-0 mt-1">
+                          <CheckCircle className="w-4 h-4 text-cyan-400" />
+                        </div>
+                        <p className="text-slate-300">{insight}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* This Week's Action */}
+                <div>
+                  <div className="bg-gradient-to-r from-green-500/10 to-cyan-500/10 border border-green-500/20 rounded-lg p-4">
+                    <h4 className="text-lg font-medium text-white mb-3 flex items-center space-x-2">
+                      <Activity className="w-5 h-5 text-green-400" />
+                      <span>This Week</span>
+                    </h4>
+                    <p className="text-slate-300 mb-4">
+                      {personalizedInsights.nextAction || 'Focus on completing current tasks'}
+                    </p>
+                    
+                    {/* Quick Actions */}
+                    {personalizedInsights.actionableRecommendations && personalizedInsights.actionableRecommendations.length > 0 && (
+                      <div className="space-y-2">
+                        {personalizedInsights.actionableRecommendations.slice(0, 2).map((rec, index) => (
+                          <div key={index} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                            <div>
+                              <p className="text-white font-medium text-sm">{rec.title}</p>
+                              <p className="text-slate-400 text-xs">{rec.description}</p>
+                            </div>
+                            <span className={`px-2 py-1 text-xs rounded-full ${
+                              rec.effort === 'low' ? 'bg-green-500/20 text-green-400' :
+                              'bg-yellow-500/20 text-yellow-400'
+                            }`}>
+                              {rec.effort}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
 
         {/* AI Analytics Dashboard */}
         <div className="col-span-full">

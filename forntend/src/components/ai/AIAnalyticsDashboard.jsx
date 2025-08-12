@@ -16,12 +16,16 @@ import {
   ArrowRight
 } from 'lucide-react';
 import AIButton from './AIButton';
+import { useAuth } from '../../contexts/AuthContext';
+import apiClient from '../../lib/api-client';
 
 const AIAnalyticsDashboard = ({ className = '' }) => {
+  const { user, userProfile } = useAuth();
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(false);
   const [timeRange, setTimeRange] = useState('month');
   const [error, setError] = useState(null);
+  const [personalized, setPersonalized] = useState(false);
 
   const timeRangeOptions = [
     { value: 'week', label: 'Last Week' },
@@ -31,8 +35,8 @@ const AIAnalyticsDashboard = ({ className = '' }) => {
   ];
 
   const generateMockAnalytics = (timeRange) => {
-    // Generate realistic mock data based on time range
-    const baseRevenue = 50000;
+    // Simple analytics for individual freelancers
+    const baseRevenue = 8000;
     const timeMultiplier = {
       'week': 0.25,
       'month': 1,
@@ -43,63 +47,30 @@ const AIAnalyticsDashboard = ({ className = '' }) => {
     const multiplier = timeMultiplier[timeRange] || 1;
     const currentRevenue = Math.round(baseRevenue * multiplier * (0.8 + Math.random() * 0.4));
     const nextMonthRevenue = Math.round(currentRevenue * (1.05 + Math.random() * 0.1));
-    const quarterRevenue = Math.round(currentRevenue * 3.2);
 
     return {
       predictions: {
         nextMonth: {
           revenue: nextMonthRevenue,
-          confidence: 'high'
-        },
-        quarterForecast: {
-          revenue: quarterRevenue,
           confidence: 'medium'
         }
       },
       insights: [
-        "Your lead conversion rate has improved by 23% compared to last month, indicating stronger qualification processes.",
-        "Client retention is at 94%, which is 12% above industry average for freelance services.",
-        "Peak activity occurs between 10 AM - 2 PM, suggesting optimal times for client outreach.",
-        "Project completion rate is 98%, demonstrating excellent delivery reliability.",
-        "Average project value has increased by 18% over the selected period."
+        "Focus on completing current projects on time.",
+        "Consider following up with past clients for repeat work."
       ],
-      trends: {
-        positive: [
-          "Consistent growth in high-value projects (+$15K average)",
-          "Strong client satisfaction scores (4.8/5 average)",
-          "Increasing referral rate (35% of new leads)",
-          "Improved time-to-delivery metrics (-15% faster completion)"
-        ],
-        concerning: [
-          "Slight increase in proposal rejection rate (8% vs 5% last period)",
-          "Longer response times to initial inquiries (+2 hours average)",
-          "Seasonal dip expected in the next 2 weeks based on historical data"
-        ]
-      },
       recommendations: [
         {
-          category: "Revenue Optimization",
-          action: "Consider raising rates by 10-15% for new projects based on improved delivery metrics and client satisfaction",
-          timeframe: "Next 30 days",
-          impact: "+$8,000 monthly revenue"
+          category: "This Week",
+          action: "Send follow-up emails to 2-3 recent leads",
+          timeframe: "This week",
+          impact: "Potential new projects"
         },
         {
-          category: "Lead Generation",
-          action: "Focus marketing efforts during 10 AM - 2 PM window when engagement is highest",
-          timeframe: "Immediate",
-          impact: "+25% lead quality"
-        },
-        {
-          category: "Client Retention",
-          action: "Implement quarterly check-ins with top 20% of clients to strengthen relationships",
-          timeframe: "Next quarter",
-          impact: "+15% retention rate"
-        },
-        {
-          category: "Efficiency",
-          action: "Automate proposal follow-up emails to reduce response time and improve conversion",
-          timeframe: "Next 2 weeks",
-          impact: "-50% response time"
+          category: "Simple Tasks",
+          action: "Update your portfolio with recent work",
+          timeframe: "Next week",
+          impact: "Better client impression"
         }
       ]
     };
@@ -110,11 +81,37 @@ const AIAnalyticsDashboard = ({ className = '' }) => {
     setError(null);
 
     try {
-      // Simulate API delay for realistic feel
+      // Try to get personalized analytics from API
+      if (user) {
+        try {
+          const response = await apiClient.post('/social/generate-analytics', {
+            timeRange,
+            businessData: {
+              // Add any available business metrics here
+              timeRange,
+              userProfile: userProfile ? {
+                businessName: userProfile.businessName,
+                industry: userProfile.industry,
+                businessType: userProfile.businessType
+              } : null
+            }
+          });
+
+          if (response.data.success) {
+            setAnalytics(response.data.data);
+            setPersonalized(response.data.personalized);
+            return;
+          }
+        } catch (apiError) {
+          console.warn('Personalized analytics failed, falling back to mock data:', apiError);
+        }
+      }
+
+      // Fallback to mock data if API fails or user not available
       await new Promise(resolve => setTimeout(resolve, 1500));
-      
       const mockData = generateMockAnalytics(timeRange);
       setAnalytics(mockData);
+      setPersonalized(false);
     } catch (err) {
       setError(err.message);
       console.error('Error loading AI analytics:', err);
@@ -242,10 +239,17 @@ const AIAnalyticsDashboard = ({ className = '' }) => {
           <div className="p-2 bg-purple-500/20 rounded-xl">
             <BarChart3 className="w-6 h-6 text-purple-400" />
           </div>
-          <div>
-            <h2 className="text-xl font-semibold text-white">AI Business Analytics</h2>
-            <p className="text-sm text-slate-400">AI-powered insights and forecasting</p>
+                  <div>
+          <h2 className="text-xl font-semibold text-white">Simple Analytics</h2>
+          <div className="flex items-center space-x-2">
+            <p className="text-sm text-slate-400">Essential insights for freelancers</p>
+            {personalized && (
+              <span className="px-2 py-1 bg-cyan-500/20 text-cyan-400 text-xs rounded-full">
+                Personal
+              </span>
+            )}
           </div>
+        </div>
         </div>
         
         <div className="flex items-center space-x-3">
@@ -303,103 +307,58 @@ const AIAnalyticsDashboard = ({ className = '' }) => {
           animate={{ opacity: 1 }}
           className="space-y-6"
         >
-          {/* Key Metrics */}
+          {/* Simple Metrics */}
           {analytics.predictions && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <MetricCard
-                title="Revenue Forecast"
+                title="Next Month Estimate"
                 value={`$${analytics.predictions.nextMonth?.revenue?.toLocaleString() || '0'}`}
                 change={`${analytics.predictions.nextMonth?.confidence || 'medium'} confidence`}
                 trend="up"
                 icon={DollarSign}
                 color="green"
-                prediction={`Next month: $${analytics.predictions.nextMonth?.revenue?.toLocaleString() || '0'}`}
               />
               
               <MetricCard
-                title="Quarterly Outlook"
-                value={`$${analytics.predictions.quarterForecast?.revenue?.toLocaleString() || '0'}`}
-                change={`${analytics.predictions.quarterForecast?.confidence || 'medium'} confidence`}
-                trend="up"
-                icon={TrendingUp}
-                color="blue"
-                prediction="Based on current trends"
-              />
-              
-              <MetricCard
-                title="Key Insights"
-                value={analytics.insights?.length || 0}
-                change="AI-generated"
-                icon={Target}
-                color="purple"
-              />
-              
-              <MetricCard
-                title="Recommendations"
+                title="Quick Actions"
                 value={analytics.recommendations?.length || 0}
-                change="Action items"
+                change="Simple tasks"
                 icon={CheckCircle}
-                color="orange"
+                color="cyan"
               />
             </div>
           )}
 
-          {/* Insights Section */}
+          {/* Simple Insights */}
           {analytics.insights && analytics.insights.length > 0 && (
             <div>
-              <h3 className="text-lg font-medium text-white mb-4">AI Insights</h3>
+              <h3 className="text-lg font-medium text-white mb-4">Current Focus</h3>
               <div className="space-y-3">
                 {analytics.insights.map((insight, index) => (
                   <InsightCard
                     key={index}
                     insight={insight}
-                    type={index === 0 ? 'trend' : 'info'}
+                    type="info"
                   />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Trends */}
-          {analytics.trends && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {analytics.trends.positive && analytics.trends.positive.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-medium text-white mb-4 flex items-center space-x-2">
-                    <TrendingUp className="w-5 h-5 text-green-400" />
-                    <span>Positive Trends</span>
-                  </h3>
-                  <div className="space-y-3">
-                    {analytics.trends.positive.map((trend, index) => (
-                      <InsightCard key={index} insight={trend} type="success" />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {analytics.trends.concerning && analytics.trends.concerning.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-medium text-white mb-4 flex items-center space-x-2">
-                    <AlertTriangle className="w-5 h-5 text-yellow-400" />
-                    <span>Areas of Concern</span>
-                  </h3>
-                  <div className="space-y-3">
-                    {analytics.trends.concerning.map((trend, index) => (
-                      <InsightCard key={index} insight={trend} type="warning" />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Recommendations */}
+          {/* Simple Actions */}
           {analytics.recommendations && analytics.recommendations.length > 0 && (
             <div>
-              <h3 className="text-lg font-medium text-white mb-4">AI Recommendations</h3>
+              <h3 className="text-lg font-medium text-white mb-4">This Week's Tasks</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {analytics.recommendations.map((recommendation, index) => (
-                  <RecommendationCard key={index} recommendation={recommendation} />
+                  <div key={index} className="bg-white/5 border border-white/10 rounded-xl p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <h4 className="font-medium text-white">{recommendation.category}</h4>
+                      <span className="text-xs text-cyan-400">{recommendation.timeframe}</span>
+                    </div>
+                    <p className="text-sm text-slate-300 mb-2">{recommendation.action}</p>
+                    <p className="text-xs text-green-400">{recommendation.impact}</p>
+                  </div>
                 ))}
               </div>
             </div>

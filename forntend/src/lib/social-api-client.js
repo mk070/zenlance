@@ -484,17 +484,116 @@ export const generateSampleImages = async (content, style = 'realistic') => {
   }
 }
 
-// ==================== TEXT GENERATION (Frontend Only) ====================
+// ==================== AI TEXT GENERATION (Backend API) ====================
 
-// Template-based rephrasing function
-const rephraseContent = (content, tone = 'professional') => {
+// Rephrase existing content using Azure OpenAI backend
+export const rephraseTextContent = async (content, tone = 'professional', platforms = [], variations = 3) => {
+  try {
+    const response = await apiClient.post('/social/rephrase-content', {
+      content: content.trim(),
+      tone,
+      platforms,
+      variations
+    })
+    
+    // Extract just the content strings for compatibility with existing frontend
+    const rephrrasedTexts = response.data.data.map(variation => variation.content)
+    
+    return {
+      success: true,
+      data: rephrrasedTexts,
+      metadata: response.data.metadata
+    }
+  } catch (error) {
+    console.error('Text Rephrase Error:', error)
+    return {
+      success: false,
+      error: error.response?.data?.message || error.message
+    }
+  }
+}
+
+// Generate fresh text content using Azure OpenAI backend
+export const generateTextContent = async (topic, tone = 'professional', platforms = [], variations = 3) => {
+  try {
+    const response = await apiClient.post('/social/generate-content', {
+      topic: topic.trim() || 'exciting business update',
+      tone,
+      platforms,
+      variations
+    })
+    
+    // Extract just the content strings for compatibility with existing frontend
+    const generatedTexts = response.data.data.map(variation => variation.content)
+    
+    return {
+      success: true,
+      data: generatedTexts,
+      metadata: response.data.metadata
+    }
+  } catch (error) {
+    console.error('Text Generation Error:', error)
+    return {
+      success: false,
+      error: error.response?.data?.message || error.message
+    }
+  }
+}
+
+// Generate platform-specific content using Azure OpenAI backend
+export const generateForPlatform = async (topic, platform, tone = 'professional') => {
+  try {
+    const response = await apiClient.post('/social/generate-for-platform', {
+      topic: topic.trim(),
+      platform,
+      tone
+    })
+    
+    return {
+      success: true,
+      data: response.data.data,
+      metadata: response.data.metadata
+    }
+  } catch (error) {
+    console.error('Platform-specific Generation Error:', error)
+    return {
+      success: false,
+      error: error.response?.data?.message || error.message
+    }
+  }
+}
+
+// Analyze content statistics using backend
+export const analyzeContent = async (content) => {
+  try {
+    const response = await apiClient.post('/social/analyze-content', {
+      content: content.trim()
+    })
+    
+    return {
+      success: true,
+      data: response.data.data
+    }
+  } catch (error) {
+    console.error('Content Analysis Error:', error)
+    return {
+      success: false,
+      error: error.response?.data?.message || error.message
+    }
+  }
+}
+
+// ==================== FALLBACK TEXT GENERATION (Frontend Templates) ====================
+
+// Template-based rephrasing function (fallback)
+const rephraseContentFallback = (content, tone = 'professional') => {
   const templates = CONTENT_TEMPLATES[tone] || CONTENT_TEMPLATES.professional
   const randomTemplate = templates[Math.floor(Math.random() * templates.length)]
   return randomTemplate.replace('{content}', content.trim())
 }
 
-// Generate multiple rephrase options
-const generateRephraseOptions = (content, tone = 'professional') => {
+// Generate multiple rephrase options (fallback)
+const generateRephraseOptionsFallback = (content, tone = 'professional') => {
   const options = []
   const templates = CONTENT_TEMPLATES[tone] || CONTENT_TEMPLATES.professional
   
@@ -508,43 +607,22 @@ const generateRephraseOptions = (content, tone = 'professional') => {
   return options
 }
 
-// Rephrase existing content with templates
-export const rephraseTextContent = async (content, tone = 'professional') => {
+// Fallback text generation for offline use
+export const generateTextContentFallback = async (baseContent, tone = 'professional') => {
   try {
     // Simulate processing delay
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    
-    const rephrasedTexts = generateRephraseOptions(content, tone)
-    
-    return {
-      success: true,
-      data: rephrasedTexts
-    }
-  } catch (error) {
-    console.error('Text Rephrase Error:', error)
-    return {
-      success: false,
-      error: error.message
-    }
-  }
-}
-
-// Generate new text content with templates
-export const generateTextContent = async (baseContent, tone = 'professional') => {
-  try {
-    // Simulate processing delay
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    await new Promise(resolve => setTimeout(resolve, 1000))
     
     // Create a general prompt if no content exists
     const content = baseContent.trim() || 'exciting business update'
-    const generatedTexts = generateRephraseOptions(content, tone)
+    const generatedTexts = generateRephraseOptionsFallback(content, tone)
     
     return {
       success: true,
       data: generatedTexts
     }
   } catch (error) {
-    console.error('Text Generation Error:', error)
+    console.error('Fallback Text Generation Error:', error)
     return {
       success: false,
       error: error.message

@@ -641,12 +641,17 @@ const CreateSocialPost = () => {
     try {
       setTextGenerating(true)
       
-      const result = await rephraseTextContent(formData.content, 'professional')
+      const result = await rephraseTextContent(
+        formData.content, 
+        'professional', 
+        formData.platforms, 
+        3
+      )
       
       if (result.success) {
         setGeneratedTexts(result.data)
         setTextGenerationModal(true)
-        toast.success('Content rephrased successfully!')
+        toast.success('Content rephrased successfully using AI!')
       } else {
         throw new Error(result.error)
       }
@@ -663,11 +668,16 @@ const CreateSocialPost = () => {
       setTextGenerating(true)
       
       const baseContent = formData.content.trim() || 'exciting business update'
-      const result = await generateTextContent(baseContent, tone)
+      const result = await generateTextContent(
+        baseContent, 
+        tone, 
+        formData.platforms, 
+        3
+      )
       
       if (result.success) {
         setGeneratedTexts(result.data)
-        toast.success(`Generated ${result.data.length} text variations!`)
+        toast.success(`Generated ${result.data.length} AI text variations!`)
       } else {
         throw new Error(result.error)
       }

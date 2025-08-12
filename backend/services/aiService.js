@@ -47,16 +47,26 @@ class AIService {
         ? (options.deployment || process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-4')
         : (options.model || 'gpt-4o-mini');
 
-      const response = await this.openai.chat.completions.create({
+      // Prepare API parameters, converting camelCase to snake_case for Azure OpenAI
+      const apiParams = {
         model: modelOrDeployment,
         messages,
-        max_tokens: options.maxTokens || 2000,
+        max_tokens: options.maxTokens || options.max_tokens || 2000,
         temperature: options.temperature || 0.7,
-        top_p: options.topP || 1,
-        frequency_penalty: options.frequencyPenalty || 0,
-        presence_penalty: options.presencePenalty || 0,
-        ...options
+        top_p: options.topP || options.top_p || 1,
+        frequency_penalty: options.frequencyPenalty || options.frequency_penalty || 0,
+        presence_penalty: options.presencePenalty || options.presence_penalty || 0
+      };
+
+      // Add any additional options (excluding our processed ones)
+      const processedKeys = ['maxTokens', 'max_tokens', 'topP', 'top_p', 'frequencyPenalty', 'frequency_penalty', 'presencePenalty', 'presence_penalty'];
+      Object.keys(options).forEach(key => {
+        if (!processedKeys.includes(key) && !apiParams.hasOwnProperty(key)) {
+          apiParams[key] = options[key];
+        }
       });
+
+      const response = await this.openai.chat.completions.create(apiParams);
 
       return {
         success: true,
